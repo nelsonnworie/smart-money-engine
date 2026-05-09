@@ -1,25 +1,28 @@
 import sys
 import os
 import time
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 # This ensures Python can find the 'backend' folder from inside 'scripts'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# --- IMPORTS ---
 from backend.database import SessionLocal, save_transaction
 from backend.models import Wallet
 from scripts.fetcher import fetch_wallet_transactions, parse_transaction
+from backend.analytics import run_analytics  # THIS IS THE STEP 2 IMPORT
 
 def run_collection():
     db = SessionLocal()
     try:
-        # 1. Pull the 30 wallets we just saw in your screenshot
+        # 1. Pull the 30 wallets from your database
         wallets = db.query(Wallet).all()
         print(f"\n🔄 Starting collection cycle for {len(wallets)} wallets...")
 
         for wallet in wallets:
             print(f"📡 Scanning: {wallet.label} [{wallet.chain}]")
             
-            # 2. Fetch raw blockchain data using the fetcher we built
+            # 2. Fetch raw blockchain data
             raw_txs = fetch_wallet_transactions(wallet.address, wallet.chain)
             
             new_count = 0
@@ -28,11 +31,10 @@ def run_collection():
                 parsed = parse_transaction(tx)
                 
                 if parsed:
-                    # Attach specific wallet info to the transaction record
                     parsed['wallet_address'] = wallet.address
                     parsed['chain'] = wallet.chain
                     
-                    # 4. Save to the 'transactions' table in Postgres
+                    # 4. Save to the 'transactions' table
                     was_saved = save_transaction(parsed)
                     if was_saved:
                         new_count += 1
@@ -40,8 +42,12 @@ def run_collection():
             if new_count > 0:
                 print(f"   ✅ SUCCESS: Logged {new_count} NEW whale moves.")
             
-            # Pause briefly to be nice to the API (Rate Limiting)
+            # Rate Limiting
             time.sleep(0.5)
+
+        # --- STEP 2: CONNECTING TO THE SCHEDULER ---
+        # Now that we have fresh data, we trigger the 'Brain' to analyze it immediately
+        run_analytics()
 
     except Exception as e:
         print(f"⚠️ Collector Error: {e}")
@@ -49,10 +55,7 @@ def run_collection():
         db.close()
         print("🏁 Cycle complete. Standing by for next run...")
 
-from apscheduler.schedulers.blocking import BlockingScheduler
-
-# ... (keep all your existing functions and imports above) ...
-
+# --- EXECUTION BLOCK ---
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     
