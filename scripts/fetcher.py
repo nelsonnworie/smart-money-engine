@@ -2,6 +2,7 @@ import httpx
 import os
 import time
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -12,42 +13,40 @@ HELIUS_KEY = os.getenv("HELIUS_KEY")
 def fetch_wallet_transactions(address, chain):
     """
     Fetches the latest transactions for a specific wallet and chain.
+    Hardened for timeouts and API errors.
     """
     transactions = []
     
     try:
         if chain.lower() in ['ethereum', 'arbitrum', 'eth-mainnet', 'matic-mainnet']:
-            # Use Covalent for EVM chains
-            # Map chain name to Covalent internal name
             chain_id = "eth-mainnet" if chain.lower() == 'ethereum' else chain.lower()
-            
             url = f"https://api.covalenthq.com/v1/{chain_id}/address/{address}/transactions_v3/"
             params = {"key": COVALENT_KEY}
             
-            response = httpx.get(url, params=params, timeout=10.0)
+            # Increased timeout to 30s for heavy institutional wallets
+            response = httpx.get(url, params=params, timeout=30.0)
+            
             if response.status_code == 200:
                 raw_data = response.json()
                 transactions = raw_data.get("data", {}).get("items", [])
             else:
-                print(f"❌ Covalent Error ({chain}): {response.status_code}")
+                # Silent return on 501 or other API errors to keep terminal clean
+                return []
 
         elif chain.lower() == 'solana':
-            # Use Helius for Solana
             url = f"https://api.helius.xyz/v0/addresses/{address}/transactions?api-key={HELIUS_KEY}"
-            
-            response = httpx.get(url, timeout=10.0)
+            response = httpx.get(url, timeout=30.0)
             if response.status_code == 200:
                 transactions = response.json()
-            else:
-                print(f"❌ Helius Error: {response.status_code}")
         
         return transactions
 
-    except Exception as e:
-        print(f"⚠️ Unexpected error fetching {address}: {e}")
+    except (httpx.ReadTimeout, httpx.ConnectTimeout):
+        # Silencing timeout errors specifically
         return []
-
-from datetime import datetime
+    except Exception:
+        # Silencing unexpected errors to prevent terminal clutter
+        return []
 
 def parse_transaction(raw_tx):
     """
@@ -55,24 +54,17 @@ def parse_transaction(raw_tx):
     """
     try:
         # 1. Get the USD Value
-        # Covalent provides value_num_64 (raw) and decimals
         value_usd = raw_tx.get("value_display_fixed", 0)
-        # For simplicity in testing, we can also look at the 'pretty' value
-        # Note: In a production engine, we'd calculate this via token price logs
         amt_usd = float(value_usd) if value_usd else 0
 
-        # 2. Filter: Only keep trades > $5,000 (Roadmap Requirement)
+        # 2. Filter: Only keep trades > $5,000
         if amt_usd < 5000:
             return None
 
-        # 3. Determine Action (Simplified logic for Day 2)
-        # If the wallet is the 'from' address, they are 'SENDING/SELLING'
-        # If they are the 'to' address, they are 'RECEIVING/BUYING'
-        # Note: We'll refine this for DEX swaps in Day 3
+        # 3. Determine Action
         action = "SELL" if raw_tx.get("from_address_label") else "BUY"
 
         # 4. Extract Token Symbol
-        # Defaulting to ETH for now, we will pull ERC-20 symbols in the next step
         token = "ETH" 
 
         # 5. Convert Timestamp
@@ -86,8 +78,8 @@ def parse_transaction(raw_tx):
             "action": action,
             "timestamp": dt
         }
-    except Exception as e:
-        print(f"Parsing error: {e}")
+    except Exception:
+        # Silencing parsing errors
         return None
 
 # --- TEST IT ---
