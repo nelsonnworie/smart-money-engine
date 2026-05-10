@@ -1,5 +1,15 @@
+# Python
 venv/
-.env
 __pycache__/
 *.pyc
+.env
+*.db
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.eslintcache
+
+# System
+.DS_Store
+Thumbs.db
