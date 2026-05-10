@@ -23,7 +23,7 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True)
     tx_hash = Column(String, unique=True)
     wallet_address = Column(String)
-    token_symbol = Column(String)
+    token = Column(String)
     amount_usd = Column(Float)
     action = Column(String) # Buy, Sell, Transfer
     chain = Column(String)

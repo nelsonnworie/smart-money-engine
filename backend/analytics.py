@@ -2,37 +2,34 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import datetime
 
-# --- CONNECTION ---
 def get_db_connection():
-    # Using the verified credentials from your .env
     return psycopg2.connect("postgresql://postgres:DESmond12$$@localhost:5432/smart_money_db")
 
-# --- HOUR 1-4: SIGNAL DETECTOR ---
 def detect_signals():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Query all transactions from the last 1 hour
+    # Query high-value transactions
     query = "SELECT * FROM transactions WHERE amount_usd > 10000 AND timestamp > NOW() - INTERVAL '1 hour'"
     cur.execute(query)
     txs = cur.fetchall()
     
     count = 0
     for tx in txs:
-        # CONVICTION SCORER LOGIC
-        score = 0
-        if tx['amount_usd'] > 500000: score += 50
-        elif tx['amount_usd'] > 50000: score += 20
+        score = 50 if tx['amount_usd'] > 500000 else (20 if tx['amount_usd'] > 50000 else 10)
         
-        level = "HIGH" if score >= 50 else ("MEDIUM" if score >= 20 else "LOW")
-
-        # THE EXACT INSERT CODE FROM STEP 2
+        # Matches your Model.py exactly
         insert_sql = """
-            INSERT INTO signals (signal_type, token_symbol, wallet_address, amount_usd, conviction_score, conviction_level)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO signals (signal_type, token, conviction_score, wallets_involved, chain)
+            VALUES (%s, %s, %s, %s, %s)
         """
-        cur.execute(insert_sql, ('BUY', tx['token_symbol'], tx['wallet_address'], tx['amount_usd'], score, level))
-        print(f"🚩 Signal: BUY ${tx['token_symbol']} ${tx['amount_usd']:,.2f} — Conviction: {level}")
+        cur.execute(insert_sql, (
+            'BUY', 
+            tx['token'], 
+            score, 
+            tx['wallet_address'], 
+            tx.get('chain', 'ethereum')
+        ))
         count += 1
         
     conn.commit()
@@ -40,16 +37,15 @@ def detect_signals():
     conn.close()
     return count
 
-# --- HOUR 4-5: CLUSTER DETECTOR ---
 def detect_clusters():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
     cluster_query = """
-        SELECT token_symbol, COUNT(DISTINCT wallet_address) as wallet_count, SUM(amount_usd) as total_usd
+        SELECT token, COUNT(DISTINCT wallet_address) as wallet_count, MAX(chain) as chain
         FROM transactions
         WHERE timestamp > NOW() - INTERVAL '24 hours'
-        GROUP BY token_symbol
+        GROUP BY token
         HAVING COUNT(DISTINCT wallet_address) >= 2
     """
     cur.execute(cluster_query)
@@ -57,21 +53,24 @@ def detect_clusters():
     
     for c in clusters:
         score = min(c['wallet_count'] * 20, 100)
-        level = "HIGH" if score >= 70 else "MEDIUM"
         
         insert_sql = """
-            INSERT INTO signals (signal_type, token_symbol, amount_usd, conviction_score, conviction_level)
+            INSERT INTO signals (signal_type, token, conviction_score, wallets_involved, chain)
             VALUES (%s, %s, %s, %s, %s)
         """
-        cur.execute(insert_sql, ('CLUSTER', c['token_symbol'], c['total_usd'], score, level))
-        print(f"💎 CLUSTER: {c['wallet_count']} wallets bought ${c['token_symbol']}!")
+        cur.execute(insert_sql, (
+            'CLUSTER', 
+            c['token'], 
+            score, 
+            f"{c['wallet_count']} wallets", 
+            c['chain']
+        ))
         
     conn.commit()
     cur.close()
     conn.close()
     return len(clusters)
 
-# --- THE MASTER FUNCTION ---
 def run_analytics():
     print(f"\n--- 🧠 ANALYTICS ENGINE STARTING ---")
     try:
