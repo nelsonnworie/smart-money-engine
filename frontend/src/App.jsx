@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
-const API_URL = "http://localhost:8000";
+const API_URL = "https://smart-money-engine-production.up.railway.app";
 
 export default function App() {
   const [filter, setFilter] = useState(0);
