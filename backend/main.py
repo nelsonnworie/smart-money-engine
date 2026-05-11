@@ -5,8 +5,9 @@ from sqlalchemy import func
 from contextlib import asynccontextmanager
 import asyncio
 
-from backend.database import SessionLocal
-from backend.models import Signal, Wallet, Transaction
+# --- CRITICAL: Added 'engine' and 'Base' to these imports ---
+from backend.database import SessionLocal, engine
+from backend.models import Signal, Wallet, Transaction, Base
 from backend.analytics import run_analytics
 
 # This handles the background loop
@@ -25,11 +26,14 @@ async def lifespan(app: FastAPI):
     # SHUTDOWN: This runs when you stop the server
     task.cancel()
 
+# --- THIS BUILDS THE TABLES IN YOUR RAILWAY DATABASE ---
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="Smart Money API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permits your frontend to access the data
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
