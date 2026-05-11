@@ -5,6 +5,8 @@
   --color-brand-dark: #0f172a;
 }
 
-body {
-  @apply bg-slate-950 text-slate-50 antialiased;
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-50 antialiased;
+  }
 }
