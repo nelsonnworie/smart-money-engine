@@ -5,77 +5,73 @@ import axios from 'axios';
 const API_URL = "http://localhost:8000";
 
 export default function App() {
-  const [minConviction, setMinConviction] = useState(0);
+  const [filter, setFilter] = useState(0);
 
-  const { data: signals } = useQuery({
-    queryKey: ['signals', minConviction],
+  const { data: signals, isLoading } = useQuery({
+    queryKey: ['signals', filter],
     queryFn: async () => {
-      const { data } = await axios.get(`${API_URL}/signals?min_conviction=${minConviction}`);
+      const { data } = await axios.get(`${API_URL}/signals?min_conviction=${filter}`);
       return data;
     },
-    refetchInterval: 30000, // Refresh every 30s per roadmap 
-  });
-
-  const { data: topMovers } = useQuery({
-    queryKey: ['top-movers'],
-    queryFn: async () => {
-      const { data } = await axios.get(`${API_URL}/top-movers`);
-      return data;
-    },
+    refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   return (
-    <div className="flex h-screen bg-slate-950 text-white font-sans">
-      {/* SIDEBAR NAVIGATION  */}
-      <aside className="w-64 border-r border-slate-800 p-6 flex flex-col gap-6">
-        <h1 className="text-xl font-bold text-blue-500">Smart Money Engine</h1>
-        <nav className="flex flex-col gap-4">
-          <button onClick={() => setMinConviction(0)} className="text-left hover:text-blue-400">📡 Signal Feed</button>
-          <div className="mt-4">
-            <p className="text-xs text-slate-500 uppercase mb-2">Top Movers Today</p>
-            {topMovers?.map((m, i) => (
-              <div key={i} className="text-sm py-1 border-b border-slate-800 flex justify-between">
-                <span>{m.token}</span>
-                <span className="text-emerald-400">{m.count} wallets</span>
-              </div>
-            ))}
-          </div>
+    <div className="flex h-screen bg-slate-950 text-slate-100">
+      {/* SIDEBAR */}
+      <aside className="w-64 border-r border-slate-800 p-6 flex flex-col gap-8">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg shadow-lg shadow-blue-500/50"></div>
+          <h1 className="font-black text-xl tracking-tighter">SMART MONEY</h1>
+        </div>
+        <nav className="flex flex-col gap-2">
+          <button className="text-left px-4 py-2 bg-slate-900 text-blue-400 rounded-xl font-bold">📡 Live Feed</button>
+          <button className="text-left px-4 py-2 hover:bg-slate-900 rounded-xl text-slate-500">🐋 Whale Watch</button>
         </nav>
       </aside>
 
       {/* MAIN FEED */}
-      <main className="flex-1 p-8 overflow-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold">Live Signals</h2>
-          {/* FILTER BAR  */}
-          <div className="flex gap-2 bg-slate-900 p-1 rounded-lg">
-            {[
-              { label: 'ALL', val: 0 },
-              { label: 'HIGH', val: 70 },
-              { label: 'MED', val: 40 },
-              { label: 'LOW', val: 1 }
-            ].map((f) => (
+      <main className="flex-1 p-8 overflow-y-auto">
+        <header className="flex justify-between items-center mb-10">
+          <div>
+            <h2 className="text-3xl font-bold">Signal Feed</h2>
+            <p className="text-slate-500">Real-time on-chain intelligence</p>
+          </div>
+          
+          {/* FILTER BUTTONS */}
+          <div className="flex gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+            {[{l:'ALL', v:0}, {l:'HIGH', v:70}, {l:'MED', v:40}].map((f) => (
               <button 
-                key={f.label}
-                onClick={() => setMinConviction(f.val)}
-                className={`px-4 py-1 rounded-md text-xs font-bold ${minConviction === f.val ? 'bg-blue-600' : 'hover:bg-slate-800'}`}
+                key={f.l} 
+                onClick={() => setFilter(f.v)}
+                className={`px-6 py-1.5 rounded-lg text-xs font-black transition-all ${filter === f.v ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
               >
-                {f.label}
+                {f.l}
               </button>
             ))}
           </div>
         </header>
 
-        {/* SIGNAL LIST  */}
+        {/* SIGNAL CARDS */}
         <div className="grid gap-4">
-          {signals?.map((s, i) => (
-            <div key={i} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold">${s.token}</h3>
-                <p className="text-slate-500 text-sm">{s.signal_type} • {s.wallets_involved}</p>
+          {isLoading ? (
+            <div className="text-center py-20 text-slate-500 animate-pulse">Scanning liquidity pools...</div>
+          ) : signals?.map((s, i) => (
+            <div key={i} className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl flex justify-between items-center hover:border-blue-500/50 transition-colors">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-xl font-bold text-blue-400 border border-slate-700">
+                  {s.token[0]}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black">${s.token}</h3>
+                  <p className="text-sm text-slate-500 font-mono">{s.wallets_involved}</p>
+                </div>
               </div>
-              <div className={`px-4 py-2 rounded font-black ${s.conviction_score >= 70 ? 'text-emerald-400 bg-emerald-400/10' : 'text-yellow-400 bg-yellow-400/10'}`}>
-                {s.conviction_score}/100
+              <div className="text-right">
+                <span className={`text-xs font-black px-3 py-1 rounded-full border ${s.conviction_score >= 70 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
+                  {s.conviction_score}/100 CONVICTION
+                </span>
+                <p className="text-xs text-slate-600 mt-2">Detected: Just Now</p>
               </div>
             </div>
           ))}
