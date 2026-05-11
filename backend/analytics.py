@@ -2,24 +2,38 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import datetime
 import asyncio
+import os
+from dotenv import load_dotenv
 from backend.telegram_bot import send_telegram_alert
 
+load_dotenv()
+
 def get_db_connection():
-    # Uses your specific database credentials
-    return psycopg2.connect("postgresql://postgres:DESmond12$$@localhost:5432/smart_money_db")
+    # 1. Get the URL from Railway's environment variables
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    
+    # 2. Fix the Railway 'postgres://' vs 'postgresql://' naming issue for SQLAlchemy/Psycopg2
+    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    
+    # 3. Fallback for your local development (only used if DATABASE_URL isn't found)
+    if not DATABASE_URL:
+        DATABASE_URL = "postgresql://postgres:DESmond12$$@localhost:5432/smart_money_db"
+        
+    return psycopg2.connect(DATABASE_URL)
 
 def detect_signals():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Query high-value transactions (> $10k) from the last hour [cite: 13]
+    # Query high-value transactions (> $10k) from the last hour
     query = "SELECT * FROM transactions WHERE amount_usd > 10000 AND timestamp > NOW() - INTERVAL '1 hour'"
     cur.execute(query)
     txs = cur.fetchall()
     
     count = 0
     for tx in txs:
-        # Calculate conviction score based on transaction size [cite: 13]
+        # Calculate conviction score based on transaction size
         score = 50 if tx['amount_usd'] > 500000 else (20 if tx['amount_usd'] > 50000 else 10)
         
         insert_sql = """
@@ -31,7 +45,7 @@ def detect_signals():
         new_signal = cur.fetchone()
         count += 1
         
-        # Hour 5-6 Requirement: Trigger Telegram alert for scores >= 70 
+        # Trigger Telegram alert for high scores
         if score >= 70:
             alert_data = {
                 "token": new_signal['token'],
@@ -39,7 +53,6 @@ def detect_signals():
                 "conviction_score": new_signal['conviction_score']
             }
             try:
-                # Use the function from your telegram_bot.py 
                 asyncio.run(send_telegram_alert(alert_data))
                 print(f"🚀 High conviction alert for ${new_signal['token']} sent!")
             except Exception as e:
@@ -54,7 +67,7 @@ def detect_clusters():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Find tokens bought by 2+ different wallets in 24h [cite: 13]
+    # Find tokens bought by 2+ different wallets in 24h
     cluster_query = """
         SELECT token, COUNT(DISTINCT wallet_address) as wallet_count, MAX(chain) as chain
         FROM transactions
@@ -78,11 +91,14 @@ def detect_clusters():
 
         # Send alert if cluster conviction is high 
         if score >= 70:
-            asyncio.run(send_telegram_alert({
-                "token": new_cluster['token'],
-                "signal_type": "CLUSTER",
-                "conviction_score": score
-            }))
+            try:
+                asyncio.run(send_telegram_alert({
+                    "token": new_cluster['token'],
+                    "signal_type": "CLUSTER",
+                    "conviction_score": score
+                }))
+            except Exception as e:
+                print(f"⚠️ Telegram alert failed: {e}")
         
     conn.commit()
     cur.close()
