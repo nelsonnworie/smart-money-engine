@@ -6,19 +6,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-engine = create_engine(os.getenv("DATABASE_URL"))
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# 1. Get the URL from the environment
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-def save_transaction(tx_data):
-    db = SessionLocal()
-    try:
-        # Check if exists to avoid duplicates
-        exists = db.query(Transaction).filter(Transaction.tx_hash == tx_data['tx_hash']).first()
-        if not exists:
-            new_tx = Transaction(**tx_data)
-            db.add(new_tx)
-            db.commit()
-            return True
-        return False
-    finally:
-        db.close()
+# 2. Fix the Railway 'postgres://' vs 'postgresql://' issue
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# 3. Create the engine (with a backup for local development)
+if not DATABASE_URL:
+    print("⚠️ WARNING: No DATABASE_URL found, falling back to local.")
+    DATABASE_URL = "postgresql://postgres:password@localhost:5432/smart_money"
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
