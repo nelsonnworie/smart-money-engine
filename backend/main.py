@@ -5,29 +5,33 @@ from sqlalchemy import func
 from contextlib import asynccontextmanager
 import asyncio
 
-# --- CRITICAL: Added 'engine' and 'Base' to these imports ---
+# Imports remain the same
 from backend.database import SessionLocal, engine
 from backend.models import Signal, Wallet, Transaction, Base
 from backend.analytics import run_analytics
 
-# This handles the background loop
+# Background Loop
 async def analytics_scheduler():
     while True:
         print("🔄 Scheduler: Running background analytics...")
-        run_analytics()
-        # Wait 10 minutes (600 seconds) before running again
+        try:
+            run_analytics()
+        except Exception as e:
+            print(f"❌ Analytics Error: {e}")
+        # Wait 10 minutes
         await asyncio.sleep(600)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # STARTUP: This runs when you start the server
+    # --- FIX: Moved table creation inside lifespan ---
+    print("🚀 Initializing Database Tables...")
+    Base.metadata.create_all(bind=engine)
+    
+    # Start the background task
     task = asyncio.create_task(analytics_scheduler())
     yield
-    # SHUTDOWN: This runs when you stop the server
+    # Shutdown
     task.cancel()
-
-# --- THIS BUILDS THE TABLES IN YOUR RAILWAY DATABASE ---
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Smart Money API", lifespan=lifespan)
 
@@ -45,6 +49,11 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Root route added to stop the "Not Found" error on the main link
+@app.get("/")
+def root():
+    return {"message": "Smart Money API is live. Visit /docs for API documentation or /health for status."}
 
 @app.get("/health")
 def health():
