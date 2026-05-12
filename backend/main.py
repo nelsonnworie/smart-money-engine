@@ -52,12 +52,6 @@ def get_db():
     finally:
         db.close()
 
-@app.on_event("startup")
-async def startup_event():
-    # This triggers the loop immediately so you don't have to wait 10 minutes
-    print("🚀 Server started. Initializing analytics scheduler...")
-    asyncio.create_task(analytics_scheduler())
-
 # Root route added to stop the "Not Found" error on the main link
 @app.get("/")
 def root():
