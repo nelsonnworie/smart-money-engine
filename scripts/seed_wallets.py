@@ -1,9 +1,17 @@
+import sys
+import os
 import json
+
+# 1. Path Helper: Look one folder up for 'backend'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# 2. Imports
 from backend.database import SessionLocal
 from backend.models import Wallet
 
 def seed_wallets():
     db = SessionLocal()
+    # Ensure the path to the JSON file is correct relative to where you run the script
     with open("scripts/wallets.json", "r") as f:
         wallets = json.load(f)
         

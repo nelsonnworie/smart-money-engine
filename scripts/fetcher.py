@@ -53,9 +53,18 @@ def parse_transaction(raw_tx):
     Cleans raw Covalent data into a simple BUY/SELL event.
     """
     try:
-        # 1. Get the USD Value
-        value_usd = raw_tx.get("value_display_fixed", 0)
-        amt_usd = float(value_usd) if value_usd else 0
+        
+        # 1. Get the USD Value safely
+        value_usd = raw_tx.get("value_display_fixed")
+        
+        # If value is None or empty string, treat as 0 to avoid crash
+        if not value_usd:
+            amt_usd = 0.0
+        else:
+            try:
+                amt_usd = float(value_usd)
+            except ValueError:
+                amt_usd = 0.0
 
         # 2. Filter: Only keep trades > $5,000
         if amt_usd < 5000:

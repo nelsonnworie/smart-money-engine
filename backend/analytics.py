@@ -12,11 +12,11 @@ def get_db_connection():
     # 1. Get the URL from Railway's environment variables
     DATABASE_URL = os.getenv("DATABASE_URL")
     
-    # 2. Fix the Railway 'postgres://' vs 'postgresql://' naming issue for SQLAlchemy/Psycopg2
+    # 2. Fix the Railway 'postgres://' vs 'postgresql://' naming issue
     if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     
-    # 3. Fallback for your local development (only used if DATABASE_URL isn't found)
+    # 3. Fallback for local development
     if not DATABASE_URL:
         DATABASE_URL = "postgresql://postgres:DESmond12$$@localhost:5432/smart_money_db"
         
@@ -26,15 +26,22 @@ def detect_signals():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Query high-value transactions (> $10k) from the last hour
-    query = "SELECT * FROM transactions WHERE amount_usd > 10000 AND timestamp > NOW() - INTERVAL '1 hour'"
+    # Query transactions >= $5k from the last hour
+    query = "SELECT * FROM transactions WHERE amount_usd >= 5000 AND timestamp > NOW() - INTERVAL '1 hour'"
     cur.execute(query)
     txs = cur.fetchall()
     
     count = 0
     for tx in txs:
-        # Calculate conviction score based on transaction size
-        score = 50 if tx['amount_usd'] > 500000 else (20 if tx['amount_usd'] > 50000 else 10)
+        # --- STANDALONE SCORING LOGIC ---
+        if tx['amount_usd'] >= 500000:
+            score = 95  # Mega Whale
+        elif tx['amount_usd'] >= 100000:
+            score = 85  # Large Move
+        elif tx['amount_usd'] >= 50000:
+            score = 75  # Significant Move
+        else:
+            score = 40  # Standard Move ($5k+)
         
         insert_sql = """
             INSERT INTO signals (signal_type, token, conviction_score, wallets_involved, chain)
@@ -45,8 +52,8 @@ def detect_signals():
         new_signal = cur.fetchone()
         count += 1
         
-        # Trigger Telegram alert for high scores
-        if score >= 70:
+        # --- TELEGRAM ALERT TRIGGER ---
+        if score >= 40:
             alert_data = {
                 "token": new_signal['token'],
                 "signal_type": new_signal['signal_type'],
@@ -54,7 +61,7 @@ def detect_signals():
             }
             try:
                 asyncio.run(send_telegram_alert(alert_data))
-                print(f"🚀 High conviction alert for ${new_signal['token']} sent!")
+                print(f"🚀 {score} Score Alert for ${new_signal['token']} sent to Telegram!")
             except Exception as e:
                 print(f"⚠️ Telegram alert failed: {e}")
         
@@ -89,8 +96,7 @@ def detect_clusters():
         cur.execute(insert_sql, ('CLUSTER', c['token'], score, f"{c['wallet_count']} wallets", c['chain']))
         new_cluster = cur.fetchone()
 
-        # Send alert if cluster conviction is high 
-        if score >= 70:
+        if score >= 40:
             try:
                 asyncio.run(send_telegram_alert({
                     "token": new_cluster['token'],
@@ -98,7 +104,7 @@ def detect_clusters():
                     "conviction_score": score
                 }))
             except Exception as e:
-                print(f"⚠️ Telegram alert failed: {e}")
+                print(f"⚠️ Telegram cluster alert failed: {e}")
         
     conn.commit()
     cur.close()
