@@ -9,8 +9,9 @@ import asyncio
 from backend.database import SessionLocal, engine
 from backend.models import Signal, Wallet, Transaction, Base
 from backend.analytics import run_analytics
+from scripts.collector import run_collection 
 
-# --- 1. SEEDER FUNCTION (Fixes the "Missing Function" error) ---
+# --- 1. SEEDER FUNCTION ---
 def seed_wallets_if_empty():
     db = SessionLocal()
     try:
@@ -61,16 +62,17 @@ def seed_wallets_if_empty():
         db.close()
 
 # --- 2. BACKGROUND SCHEDULER ---
-from scripts.collector import run_collection # Add this import
-
 async def engine_scheduler():
     while True:
         try:
             print("🔄 Triggering Wallet Collection & Analytics...")
+            # This calls the collector, which in turn calls analytics
             await asyncio.to_thread(run_collection)
         except Exception as e:
             print(f"❌ Engine Error: {e}")
-        await asyncio.sleep(600) # 10 minutes
+        
+        print("😴 Cycle complete. Sleeping for 10 minutes...")
+        await asyncio.sleep(600) 
 
 # --- 3. LIFESPAN MANAGEMENT ---
 @asynccontextmanager
@@ -82,8 +84,8 @@ async def lifespan(app: FastAPI):
     # Seed Data
     await asyncio.to_thread(seed_wallets_if_empty)
     
-    # Start Scheduler
-    task = asyncio.create_task(analytics_scheduler())
+    # FIX: Changed 'analytics_scheduler' to 'engine_scheduler' to match definition above
+    task = asyncio.create_task(engine_scheduler())
     yield
     task.cancel()
 
@@ -105,7 +107,6 @@ def get_db():
         db.close()
 
 # --- 4. ROUTES ---
-
 @app.get("/")
 def root():
     return {"message": "Smart Money API is live.", "endpoints": ["/health", "/signals", "/wallets"]}
