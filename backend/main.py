@@ -15,10 +15,12 @@ async def analytics_scheduler():
     while True:
         print("🔄 Scheduler: Running background analytics...")
         try:
-            run_analytics()
+            # This allows the scan to run without stopping the API
+            await asyncio.to_thread(run_analytics) 
         except Exception as e:
             print(f"❌ Analytics Error: {e}")
-        # Wait 10 minutes
+        
+        print("😴 Scan complete. Scheduler sleeping for 10 minutes...")
         await asyncio.sleep(600)
 
 @asynccontextmanager
@@ -49,6 +51,12 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@app.on_event("startup")
+async def startup_event():
+    # This triggers the loop immediately so you don't have to wait 10 minutes
+    print("🚀 Server started. Initializing analytics scheduler...")
+    asyncio.create_task(analytics_scheduler())
 
 # Root route added to stop the "Not Found" error on the main link
 @app.get("/")
