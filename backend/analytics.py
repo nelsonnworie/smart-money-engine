@@ -40,7 +40,7 @@ def detect_signals():
     # Only look at transactions from the last 1 hour
     query = """
         SELECT * FROM transactions
-        WHERE amount_usd >= 5000
+        WHERE amount_usd >= 50000
         AND timestamp > NOW() - INTERVAL '1 hour'
     """
     cur.execute(query)

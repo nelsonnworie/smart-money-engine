@@ -108,7 +108,7 @@ def parse_transaction(raw_tx):
             amt_usd = token_amount * 0.01  # conservative estimate
 
         # Filter: only keep transfers >= $5,000
-        if amt_usd < 5000:
+        if amt_usd < 50000:
             return None
 
         # Determine direction
