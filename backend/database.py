@@ -23,9 +23,16 @@ Base = declarative_base()
 
 # 2. Function to save a transaction
 def save_transaction(tx_data):
-    from backend.models import Transaction  # Local import to avoid circular errors
+    from backend.models import Transaction
     db = SessionLocal()
     try:
+        # Check if tx already exists before inserting
+        existing = db.query(Transaction).filter(
+            Transaction.tx_hash == tx_data['tx_hash']
+        ).first()
+        if existing:
+            return False  # Already saved, skip silently
+            
         new_tx = Transaction(
             wallet_address=tx_data['wallet_address'],
             token=tx_data['token'],
@@ -39,7 +46,6 @@ def save_transaction(tx_data):
         db.commit()
         return True
     except Exception as e:
-        print(f"⚠️ Error saving transaction: {e}")
         db.rollback()
         return False
     finally:

@@ -38,6 +38,12 @@ def run_collection():
                     if parsed:
                         parsed['wallet_address'] = wallet.address
                         parsed['chain'] = wallet.chain
+                        if parsed.get('to', '').lower() == wallet.address.lower():
+                               parsed['action'] = 'BUY'
+                        else:
+                               parsed['action'] = 'SELL'
+                               parsed.pop('from', None)
+                               parsed.pop('to', None)
                         
                         # 4. Save to the 'transactions' table
                         was_saved = save_transaction(parsed)
