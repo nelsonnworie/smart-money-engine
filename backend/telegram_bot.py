@@ -18,12 +18,14 @@ async def send_telegram_alert(signal_data):
     change_24h = signal_data.get('change_24h', None)
     wallets = signal_data.get('smart_wallets', None)
 
+    direction = signal_type.upper()
+
     if score >= 90:
-        header = "⚠️ <b>MEGA WHALE MOVEMENT</b>"
+        header = f"⚠️ <b>MEGA WHALE {direction}</b>"
     elif score >= 75:
-        header = "🐋 <b>SIGNIFICANT WHALE BUY</b>"
+        header = f"🐋 <b>SIGNIFICANT WHALE {direction}</b>"
     else:
-        header = "<b>WHALE ACTIVITY DETECTED</b>"
+        header = f"<b>WHALE {direction} DETECTED</b>"
 
     # Optional fields — only appear if passed in signal_data
     price_line = f"💵 <b>Price:</b> ${price}\n" if price else ""
@@ -34,15 +36,13 @@ async def send_telegram_alert(signal_data):
     wallets_line = f"👛 <b>Smart Wallets:</b> {wallets} active\n" if wallets else ""
 
     message = (
-        f"{header}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"{header}\n\n"
         f"🪙 <b>Token:</b> <code>${token_name}</code>\n"
-        f"📊 <b>Signal:</b> {signal_type.upper()}\n"
+        f"📊 <b>Signal:</b> {direction}\n"
         f"{price_line}"
         f"{change_line}"
         f"{wallets_line}"
         f"🎯 <b>Score:</b> {score}/100\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔗 <a href='https://smart-money-engine.up.railway.app/details/{token_name}'>View Details on Dashboard</a>"
     )
 
