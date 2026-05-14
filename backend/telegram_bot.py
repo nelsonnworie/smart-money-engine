@@ -79,7 +79,7 @@ if __name__ == "__main__":
         "token":            "ETH",
         "signal_type":      "BUY",
         "conviction_score": 85,
-        "amount_usd":       320000,
+        "amount_usd":       3200000,
         "chain":            "ethereum",
         "wallet":           "0x9845e1909dca337944a0272f1f9f7249833d2d19",
     }))

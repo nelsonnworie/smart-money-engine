@@ -46,16 +46,16 @@ def detect_signals():
 
     cur.execute("""
         SELECT * FROM transactions
-        WHERE amount_usd >= 100000
+        WHERE amount_usd >= 1000000
           AND timestamp > NOW() - INTERVAL '1 hour'
     """)
     txs = cur.fetchall()
 
     count = 0
     for tx in txs:
-        if   tx['amount_usd'] >= 500000: score = 95
-        elif tx['amount_usd'] >= 250000: score = 85
-        elif tx['amount_usd'] >= 100000: score = 75
+        if   tx['amount_usd'] >= 5000000: score = 95
+        elif tx['amount_usd'] >= 2500000: score = 85
+        elif tx['amount_usd'] >= 1000000: score = 75
         else:                            score = 40
 
         cur.execute("""
@@ -102,7 +102,7 @@ def detect_clusters():
             SUM(amount_usd)                AS total_usd
         FROM transactions
         WHERE timestamp > NOW() - INTERVAL '24 hours'
-          AND amount_usd >= 100000
+          AND amount_usd >= 1000000
         GROUP BY token
         HAVING COUNT(DISTINCT wallet_address) >= 2
     """)

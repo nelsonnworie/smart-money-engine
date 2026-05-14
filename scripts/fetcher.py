@@ -122,7 +122,7 @@ def parse_transaction(raw_tx, chain="ethereum"):
                     # Unknown SPL — conservative $0.01 estimate
                     amt_usd = raw_amount * 0.01
 
-                if amt_usd < 100000:
+                if amt_usd < 1000000:
                     continue
 
                 return {
@@ -141,7 +141,7 @@ def parse_transaction(raw_tx, chain="ethereum"):
                 sol_amount = lamports / 1_000_000_000  # lamports → SOL
                 amt_usd    = sol_amount * SOL_PRICE
 
-                if amt_usd < 100000:
+                if amt_usd < 1000000:
                     continue
 
                 return {
@@ -174,7 +174,7 @@ def parse_transaction(raw_tx, chain="ethereum"):
         else:
             amt_usd = token_amount * 0.01
 
-        if amt_usd < 100000:
+        if amt_usd < 1000000:
             return None
 
         timestamp_raw = raw_tx.get("timeStamp", "")
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     raw_evm = fetch_wallet_transactions(evm_address, "ethereum")
     print(f"Raw EVM transfers: {len(raw_evm)}")
     cleaned_evm = [p for p in (parse_transaction(t) for t in raw_evm) if p]
-    print(f"High-value EVM (>$100k): {len(cleaned_evm)}")
+    print(f"High-value EVM (>$1m): {len(cleaned_evm)}")
     for tx in cleaned_evm[:3]:
         print(f"  {tx['action']} {tx['token']} ${tx['amount_usd']:,.2f} at {tx['timestamp']}")
 
@@ -220,6 +220,6 @@ if __name__ == "__main__":
     raw_sol = fetch_wallet_transactions(sol_address, "solana")
     print(f"Raw Solana transactions: {len(raw_sol)}")
     cleaned_sol = [p for p in (parse_transaction(t) for t in raw_sol) if p]
-    print(f"High-value Solana (>$100k): {len(cleaned_sol)}")
+    print(f"High-value Solana (>$1m): {len(cleaned_sol)}")
     for tx in cleaned_sol[:3]:
         print(f"  {tx['action']} {tx['token']} ${tx['amount_usd']:,.2f} at {tx['timestamp']}")
