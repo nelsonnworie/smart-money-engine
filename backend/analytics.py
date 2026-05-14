@@ -58,11 +58,10 @@ def detect_signals():
         elif tx['amount_usd'] >= 100000: score = 75
         else:                            score = 40
 
-        # 5 columns, 5 values — exactly matching
         cur.execute("""
             INSERT INTO signals
-                (signal_type, token, conviction_score, wallets_involved, chain)
-            VALUES (%s, %s, %s, %s, %s)
+                (signal_type, token, conviction_score, wallets_involved, chain, amount_usd)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *;
         """, (
             tx['action'],
@@ -70,6 +69,7 @@ def detect_signals():
             score,
             tx['wallet_address'],
             tx.get('chain', 'ethereum'),
+            tx['amount_usd'],
         ))
         new_signal = cur.fetchone()
         count += 1
@@ -111,11 +111,10 @@ def detect_clusters():
     for c in clusters:
         score = min(c['wallet_count'] * 20, 100)
 
-        # 5 columns, 5 values — exactly matching
         cur.execute("""
             INSERT INTO signals
-                (signal_type, token, conviction_score, wallets_involved, chain)
-            VALUES (%s, %s, %s, %s, %s)
+                (signal_type, token, conviction_score, wallets_involved, chain, amount_usd)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *;
         """, (
             'CLUSTER',
@@ -123,6 +122,7 @@ def detect_clusters():
             score,
             f"{c['wallet_count']} wallets",
             c['chain'],
+            float(c['total_usd'] or 0),
         ))
         new_cluster = cur.fetchone()
 
