@@ -35,6 +35,7 @@ class Signal(Base):
     id = Column(Integer, primary_key=True)
     signal_type = Column(String)
     token = Column(String)
+    amount_usd = Column(Float, default=0.0)
     conviction_score = Column(Integer)
     wallets_involved = Column(String)
     chain = Column(String)
