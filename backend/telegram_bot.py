@@ -17,7 +17,7 @@ async def send_telegram_alert(signal_data):
     chain        = signal_data.get('chain', 'ethereum').capitalize()
     wallet       = signal_data.get('wallet', '')
 
-    # Format dollar amount — e.g. $1,240,000.00
+    # Format dollar amount
     amount_str = f"${amount_usd:,.2f}"
 
     if score >= 90:
@@ -27,20 +27,40 @@ async def send_telegram_alert(signal_data):
     else:
         header = f"<b>WHALE {signal_type} DETECTED</b>"
 
-    # Truncate wallet for display
-    wallet_display = (
-        f"{wallet[:6]}...{wallet[-4:]}" if len(wallet) > 12 else wallet
-    )
+    # Smart wallet display — handles both addresses and "4 wallets" strings
+    if wallet.startswith("0x") and len(wallet) > 12:
+        wallet_display = f"{wallet[:6]}...{wallet[-4:]}"
+    else:
+        wallet_display = wallet  # e.g. "4 wallets" — show as-is
+
+    # Explorer link based on chain
+    chain_lower = chain.lower()
+    explorer_links = {
+        'ethereum': f"https://etherscan.io/search?q={token_name}",
+        'arbitrum': f"https://arbiscan.io/search?q={token_name}",
+        'base':     f"https://basescan.org/search?q={token_name}",
+        'bsc':      f"https://bscscan.com/search?q={token_name}",
+        'solana':   f"https://solscan.io/search?q={token_name}",
+    }
+    explorer_url   = explorer_links.get(chain_lower, explorer_links['ethereum'])
+    explorer_label = {
+        'ethereum': 'View on Etherscan',
+        'arbitrum': 'View on Arbiscan',
+        'base':     'View on Basescan',
+        'bsc':      'View on BscScan',
+        'solana':   'View on Solscan',
+    }.get(chain_lower, 'View on Etherscan')
 
     message = (
         f"{header}\n\n"
         f"Token:   <code>${token_name}</code>\n"
+        f"Signal:  <code>{signal_type}</code>\n"
         f"Amount:  <b>{amount_str}</b>\n"
         f"Chain:   {chain}\n"
         f"Wallet:  <code>{wallet_display}</code>\n"
         f"Score:   {score}/100\n\n"
-        f"<a href='https://smart-money-engine.vercel.app?token={token_name}&chain={chain}&wallet={wallet}'>View on Dashboard</a>\n"
-        f"<a href='https://etherscan.io/search?q={token_name}'>View on Etherscan</a>"
+        f"<a href='https://v0-project-seven-amber-60.vercel.app/?token={token_name}&chain={chain_lower}&wallet={wallet}'>View on Dashboard</a>\n"
+        f"<a href='{explorer_url}'>{explorer_label}</a>"
     )
 
     bot = Bot(token=TOKEN)
@@ -56,10 +76,10 @@ async def send_telegram_alert(signal_data):
 
 if __name__ == "__main__":
     asyncio.run(send_telegram_alert({
-        "token":           "ETH",
-        "signal_type":     "BUY",
+        "token":            "ETH",
+        "signal_type":      "BUY",
         "conviction_score": 85,
-        "amount_usd":      320000,
-        "chain":           "ethereum",
-        "wallet":          "0x9845e1909dca337944a0272f1f9f7249833d2d19",
+        "amount_usd":       320000,
+        "chain":            "ethereum",
+        "wallet":           "0x9845e1909dca337944a0272f1f9f7249833d2d19",
     }))
