@@ -39,8 +39,8 @@ async def send_telegram_alert(signal_data):
         f"Chain:   {chain}\n"
         f"Wallet:  <code>{wallet_display}</code>\n"
         f"Score:   {score}/100\n\n"
-        f"<a href='https://etherscan.io/search?q={token_name}'>"
-        f"View on Etherscan</a>"
+        f"<a href='https://smart-money-engine.vercel.app?token={token_name}&chain={chain}&wallet={wallet}'>View on Dashboard</a>\n"
+        f"<a href='https://etherscan.io/search?q={token_name}'>View on Etherscan</a>"
     )
 
     bot = Bot(token=TOKEN)
