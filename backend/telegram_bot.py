@@ -11,13 +11,14 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 async def send_telegram_alert(signal_data):
     score        = signal_data.get('conviction_score', 0)
-    token_name   = signal_data.get('token', 'UNKNOWN')
+    raw_token    = signal_data.get('token', 'UNKNOWN')
     signal_type  = signal_data.get('signal_type', 'BUY')
     amount_usd   = signal_data.get('amount_usd', 0)
     chain        = signal_data.get('chain', 'ethereum').capitalize()
     wallet       = signal_data.get('wallet', '')
+    insight      = signal_data.get('insight', '')
 
-    # Format dollar amount
+    token_name = raw_token.lstrip('$').strip()
     amount_str = f"${amount_usd:,.2f}"
 
     if score >= 90:
@@ -27,38 +28,40 @@ async def send_telegram_alert(signal_data):
     else:
         header = f"<b>WHALE {signal_type} DETECTED</b>"
 
-    # Smart wallet display — handles both addresses and "4 wallets" strings
-    if wallet.startswith("0x") and len(wallet) > 12:
+    if isinstance(wallet, str) and wallet.startswith("0x") and len(wallet) > 12:
         wallet_display = f"{wallet[:6]}...{wallet[-4:]}"
     else:
-        wallet_display = wallet  # e.g. "4 wallets" — show as-is
+        wallet_display = wallet
 
-    # Explorer link based on chain
     chain_lower = chain.lower()
-    explorer_links = {
+    explorer_urls = {
         'ethereum': f"https://etherscan.io/search?q={token_name}",
         'arbitrum': f"https://arbiscan.io/search?q={token_name}",
         'base':     f"https://basescan.org/search?q={token_name}",
         'bsc':      f"https://bscscan.com/search?q={token_name}",
         'solana':   f"https://solscan.io/search?q={token_name}",
     }
-    explorer_url   = explorer_links.get(chain_lower, explorer_links['ethereum'])
-    explorer_label = {
+    explorer_labels = {
         'ethereum': 'View on Etherscan',
         'arbitrum': 'View on Arbiscan',
         'base':     'View on Basescan',
         'bsc':      'View on BscScan',
         'solana':   'View on Solscan',
-    }.get(chain_lower, 'View on Etherscan')
+    }
+    explorer_url   = explorer_urls.get(chain_lower, explorer_urls['ethereum'])
+    explorer_label = explorer_labels.get(chain_lower, 'View on Etherscan')
+
+    insight_line = f"\n<i>{insight}</i>\n" if insight else "\n"
 
     message = (
         f"{header}\n\n"
         f"Token:   <code>${token_name}</code>\n"
         f"Signal:  <code>{signal_type}</code>\n"
-        f"Amount:  <b>{amount_str}</b>\n"
+        f"Amount:  {amount_str}\n"
         f"Chain:   {chain}\n"
         f"Wallet:  <code>{wallet_display}</code>\n"
-        f"Score:   {score}/100\n\n"
+        f"Score:   {score}/100\n"
+        f"{insight_line}"
         f"<a href='https://v0-project-seven-amber-60.vercel.app/?token={token_name}&chain={chain_lower}&wallet={wallet}'>View on Dashboard</a>\n"
         f"<a href='{explorer_url}'>{explorer_label}</a>"
     )
@@ -79,7 +82,8 @@ if __name__ == "__main__":
         "token":            "ETH",
         "signal_type":      "BUY",
         "conviction_score": 85,
-        "amount_usd":       3200000,
+        "amount_usd":       3_200_000,
         "chain":            "ethereum",
         "wallet":           "0x9845e1909dca337944a0272f1f9f7249833d2d19",
+        "insight":          "Wallet has been right on 7 of the last 9 major entries.",
     }))
