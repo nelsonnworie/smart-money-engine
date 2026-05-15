@@ -14,10 +14,14 @@ STABLECOINS = [
     "FRAX", "LUSD", "USDP", "USDS", "FDUSD",
 ]
 
-DEDUPLICATION_WINDOW_MINUTES = 30
+# Tokens that are clearly meme/scam and should never alert
+# even if they somehow pass the price filter
+BLOCKLIST = [
+    "TRUMPTROLL", "XDOGE", "KISHU", "WOJAK", "XD", "AKITA",
+    "CONAN", "FREE", "VOLT", "CHUD", "BAD", "DTOKEN", "PEIPEI",
+    "4CHAN", "XEN", "STARL", "FAERIEDRAGON",
+]
 
-
-# ─── "WHY THIS SIGNAL MATTERS" templates ────────────────────────────────────
 BUY_INSIGHTS = [
     "Large position opened by a tracked smart wallet.\nMonitor for follow-up activity.",
     "Significant buy detected above $1M threshold.\nWatch price action closely.",
@@ -42,21 +46,16 @@ def get_insight(signal_type: str) -> str:
         return random.choice(BUY_INSIGHTS)
     elif signal_type == "SELL":
         return random.choice(SELL_INSIGHTS)
-    else:
-        return random.choice(CLUSTER_INSIGHTS)
+    return random.choice(CLUSTER_INSIGHTS)
 
 
 def score_to_label(score: int) -> str:
-    """Convert conviction score to human headline prefix."""
     if score >= 90:
         return "MEGA WHALE"
     elif score >= 75:
         return "SIGNIFICANT WHALE"
-    else:
-        return "WHALE"
+    return "WHALE"
 
-
-# ─── DB ─────────────────────────────────────────────────────────────────────
 
 def get_db_connection():
     DATABASE_URL = os.getenv("DATABASE_URL")
@@ -81,13 +80,10 @@ def send_alert_safe(alert_data: dict):
         print(f"⚠️ Telegram alert failed: {e}")
 
 
-# ─── SIGNAL DETECTION ────────────────────────────────────────────────────────
-
 def detect_signals():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=RealDictCursor)
 
-    # Only look at the last hour; amount is already validated in fetcher ($1M–$50M)
     cur.execute("""
         SELECT * FROM transactions
         WHERE amount_usd >= 1000000
@@ -99,35 +95,47 @@ def detect_signals():
     count = 0
     for tx in txs:
         usd    = float(tx["amount_usd"])
+        # action is always plain BUY or SELL from collector
         action = str(tx.get("action", "TRANSFER")).upper().strip()
+        if action not in ("BUY", "SELL"):
+            action = "TRANSFER"
 
         # Score by size
         if   usd >= 10_000_000: score = 95
         elif usd >=  5_000_000: score = 85
         elif usd >=  2_500_000: score = 80
-        else:                   score = 75   # floor — fetcher already required ≥$1M
+        else:                   score = 75
 
-        headline = f"{score_to_label(score)} {action}"   # e.g. "MEGA WHALE SELL"
+        # signal_type stored in DB is just the action word (BUY/SELL)
+        # label is only used for the Telegram headline
+        label    = score_to_label(score)
+        headline = f"{label} {action}"   # e.g. "MEGA WHALE SELL"
 
-        # ── Deduplication (fixed: use integer literal, not %s for INTERVAL) ──
+        token_bare = tx["token"].replace("$", "").strip().upper()
+
+        # Skip stablecoins and blocklisted tokens
+        if token_bare in STABLECOINS or token_bare in BLOCKLIST:
+            continue
+
+        # Deduplication — check by plain action, not headline
         cur.execute("""
             SELECT COUNT(*) FROM signals
             WHERE token = %s
               AND signal_type = %s
               AND created_at > NOW() - INTERVAL '30 minutes'
-        """, (tx["token"], headline))
+        """, (tx["token"], action))
 
         if cur.fetchone()["count"] > 0:
             continue
 
-        # Insert signal
+        # Insert — store plain action in signal_type
         cur.execute("""
             INSERT INTO signals
               (signal_type, token, conviction_score, wallets_involved, chain, amount_usd)
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *;
         """, (
-            action,
+            action,           # "BUY" or "SELL" — NOT the headline
             tx["token"],
             score,
             tx["wallet_address"],
@@ -138,26 +146,21 @@ def detect_signals():
         new_signal = cur.fetchone()
         count += 1
 
-        # Alert — skip stablecoins
-        token_bare = tx["token"].replace("$", "").strip().upper()
-        if score >= 75 and token_bare not in STABLECOINS:
-            send_alert_safe({
-                "token":            new_signal["token"],
-                "signal_type":      headline,
-                "conviction_score": new_signal["conviction_score"],
-                "amount_usd":       usd,
-                "chain":            new_signal["chain"],
-                "wallet":           tx["wallet_address"][:10] + "..." + tx["wallet_address"][-4:],
-                "insight":          get_insight(action),
-            })
+        send_alert_safe({
+            "token":            new_signal["token"],
+            "signal_type":      headline,      # full label for Telegram display
+            "conviction_score": score,
+            "amount_usd":       usd,
+            "chain":            new_signal["chain"],
+            "wallet":           tx["wallet_address"],
+            "insight":          get_insight(action),
+        })
 
     conn.commit()
     cur.close()
     conn.close()
     return count
 
-
-# ─── CLUSTER DETECTION ───────────────────────────────────────────────────────
 
 def detect_clusters():
     conn = get_db_connection()
@@ -180,10 +183,13 @@ def detect_clusters():
 
     inserted = 0
     for c in clusters:
+        token_bare = c["token"].replace("$", "").strip().upper()
+        if token_bare in STABLECOINS or token_bare in BLOCKLIST:
+            continue
+
         score = min(int(c["wallet_count"]) * 20, 100)
         total = float(c["total_usd"] or 0)
 
-        # Deduplication (fixed interval syntax)
         cur.execute("""
             SELECT COUNT(*) FROM signals
             WHERE token = %s
@@ -211,18 +217,16 @@ def detect_clusters():
         new_cluster = cur.fetchone()
         inserted += 1
 
-        token_bare = c["token"].replace("$", "").strip().upper()
-        if score >= 75 and token_bare not in STABLECOINS:
-            label = score_to_label(score)
-            send_alert_safe({
-                "token":            new_cluster["token"],
-                "signal_type":      f"{label} CLUSTER",
-                "conviction_score": score,
-                "amount_usd":       total,
-                "chain":            c["chain"],
-                "wallet":           f"{c['wallet_count']} wallets",
-                "insight":          get_insight("CLUSTER"),
-            })
+        label = score_to_label(score)
+        send_alert_safe({
+            "token":            new_cluster["token"],
+            "signal_type":      f"{label} CLUSTER",
+            "conviction_score": score,
+            "amount_usd":       total,
+            "chain":            c["chain"],
+            "wallet":           f"{c['wallet_count']} wallets",
+            "insight":          get_insight("CLUSTER"),
+        })
 
     conn.commit()
     cur.close()
@@ -230,42 +234,42 @@ def detect_clusters():
     return inserted
 
 
-# ─── WALLET WIN-RATE UPDATER ─────────────────────────────────────────────────
-
 def update_wallet_stats():
     """
-    Refreshes win_rate, total_signals, profitable_signals on the wallets table.
-    Call this once per analytics cycle.
-    Requires the three columns to exist (see migration SQL in README).
+    Updates win_rate, total_signals, profitable_signals on wallets table.
+    Requires the outcome column to exist on signals table.
+    Skips gracefully if column is missing.
     """
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
-        UPDATE wallets w
-        SET
-            total_signals      = sub.total,
-            profitable_signals = sub.profitable,
-            win_rate           = CASE WHEN sub.total = 0 THEN 0
-                                      ELSE ROUND((sub.profitable::numeric / sub.total) * 100, 1)
-                                 END
-        FROM (
-            SELECT
-                wallets_involved                    AS wallet,
-                COUNT(*)                            AS total,
-                COUNT(*) FILTER (WHERE outcome = 'WIN') AS profitable
-            FROM signals
-            GROUP BY wallets_involved
-        ) sub
-        WHERE w.address = sub.wallet;
-    """)
+    try:
+        cur.execute("""
+            UPDATE wallets w
+            SET
+                total_signals      = sub.total,
+                profitable_signals = sub.profitable,
+                win_rate           = CASE WHEN sub.total = 0 THEN 0
+                                          ELSE ROUND((sub.profitable::numeric / sub.total) * 100, 1)
+                                     END
+            FROM (
+                SELECT
+                    wallets_involved AS wallet,
+                    COUNT(*)         AS total,
+                    COUNT(*) FILTER (WHERE s.outcome = 'WIN') AS profitable
+                FROM signals s
+                GROUP BY wallets_involved
+            ) sub
+            WHERE w.address = sub.wallet;
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ update_wallet_stats skipped: {e}")
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
 
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-# ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
 def run_analytics():
     print("\n--- ANALYTICS ENGINE STARTING ---")
