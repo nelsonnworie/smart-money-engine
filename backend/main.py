@@ -106,3 +106,13 @@ def get_top_movers(db: Session = Depends(get_db)):
 @app.get("/clusters")
 def get_clusters(db: Session = Depends(get_db)):
     return db.query(Signal).filter(Signal.signal_type == 'CLUSTER').all()
+
+@app.get("/admin/clean-old-transactions")
+def clean_old_transactions(db: Session = Depends(get_db)):
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=2)
+    deleted = db.query(Transaction).filter(
+        Transaction.timestamp < cutoff
+    ).delete()
+    db.commit()
+    return {"deleted": deleted, "message": "Old transactions cleaned"}

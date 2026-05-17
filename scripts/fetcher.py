@@ -20,43 +20,84 @@ STABLECOINS = [
     "USDE", "PYUSD", "GUSD", "HUSD", "SUSD",
 ]
 
+# Only obvious scam/exploit tokens — NOT meme coins
 BLOCKLIST = [
-    "TRUMPTROLL", "XDOGE", "KISHU", "WOJAK", "XD", "AKITA",
-    "CONAN", "FREE", "VOLT", "CHUD", "BAD", "DTOKEN", "PEIPEI",
-    "4CHAN", "XEN", "STARL", "FAERIEDRAGON", "BIDEN", "HQG",
+    "TRUMPTROLL", "XDOGE", "KISHU", "XD",
+    "CHUD", "BAD", "DTOKEN", "PEIPEI",
+    "4CHAN", "XEN", "STARL", "FAERIEDRAGON",
+    "BIDEN", "HQG", "ETHF", "ETHG",
+    "AF1", "AFO", "ETHFATHER",
+    # Wrapped tokens — not trading signals
+    "WETH", "WBTC", "WBNB", "WMATIC", "WAVAX",
 ]
 
-MAX_REALISTIC_USD = 50_000_000
-MIN_ALERT_USD     = 100_000
+MAX_REALISTIC_USD = 50_000_000   # $50M cap — above this is almost certainly bad data
+MIN_ALERT_USD     = 50_000       # $50k minimum — catches real whale moves
 
+# Live prices — update these weekly or connect to a price API later
 KNOWN_PRICES = {
-    "PEPE":  0.0000142,
-    "SHIB":  0.0000248,
-    "DOGE":  0.38,
-    "FLOKI": 0.000195,
-    "LINK":  14.0,
-    "UNI":   7.0,
-    "AAVE":  80.0,
-    "CRV":   0.35,
-    "LDO":   1.0,
-    "ARB":   0.45,
-    "OP":    0.90,
-    "GMX":   18.0,
-    "JTO":   2.50,
-    "JUP":   0.55,
-    "PENDLE":1.50,
-    "EIGEN": 1.80,
-    "ONDO":  0.85,
-    "GRT":   0.12,
-    "ARKM":  1.20,
-    "TURBO": 0.004,
-    "GALA":  0.018,
-    "JASMY": 0.016,
-    "WLFI":  0.045,
-    "REQ":   0.08,
-    "ATA":   0.05,
-    "SXT":   0.06,
-    "USUAL": 0.12,
+    # Major tokens
+    "ETH":    2300.0,
+    "BTC":    95000.0,
+    "SOL":    150.0,
+    "BNB":    600.0,
+    # DeFi blue chips
+    "LINK":   14.0,
+    "UNI":    7.0,
+    "AAVE":   150.0,
+    "CRV":    0.35,
+    "LDO":    1.0,
+    "MKR":    1500.0,
+    "SNX":    1.8,
+    "COMP":   50.0,
+    "BAL":    2.5,
+    "SUSHI":  0.8,
+    # L2 / ecosystem
+    "ARB":    0.45,
+    "OP":     0.90,
+    "MATIC":  0.35,
+    "IMX":    0.90,
+    "STRK":   0.35,
+    # Perps / trading
+    "GMX":    18.0,
+    "GNS":    1.8,
+    "DYDX":   0.80,
+    # Yield / liquid staking
+    "PENDLE": 1.50,
+    "EIGEN":  1.80,
+    "RPL":    8.0,
+    "FXS":    2.5,
+    # RWA / institutional
+    "ONDO":   0.85,
+    "CFG":    0.45,
+    "USUAL":  0.12,
+    # AI / data
+    "GRT":    0.12,
+    "ARKM":   1.20,
+    "FET":    1.10,
+    "OCEAN":  0.35,
+    "SXT":    0.06,
+    # Gaming / NFT
+    "GALA":   0.018,
+    "IMX":    0.90,
+    "MAGIC":  0.35,
+    # Meme (still trackable — big meme moves ARE news)
+    "PEPE":   0.0000142,
+    "SHIB":   0.0000248,
+    "DOGE":   0.38,
+    "FLOKI":  0.000195,
+    "BONK":   0.000018,
+    "WIF":    1.50,
+    "TURBO":  0.004,
+    # Other commonly traded
+    "JASMY":  0.016,
+    "WLFI":   0.045,
+    "REQ":    0.08,
+    "ATA":    0.05,
+    "JTO":    2.50,
+    "JUP":    0.55,
+    "GALA":   0.018,
+    "GRT":    0.12,
 }
 
 
@@ -78,6 +119,8 @@ def get_eth_price() -> float:
         if r.status_code == 200:
             price = float(r.json().get("result", {}).get("ethusd", 2500))
             _eth_price_cache.update({"price": price, "last_update": now})
+            # Also update KNOWN_PRICES so ETH price stays fresh
+            KNOWN_PRICES["ETH"] = price
             return price
     except Exception:
         pass
@@ -93,18 +136,12 @@ def get_token_price(token_symbol: str) -> float:
 
     if token in STABLECOINS:
         price = 1.0
-    elif token in ("WETH", "ETH"):
+    elif token in ("ETH",):
         price = get_eth_price()
-    elif token == "WBTC":
-        price = 95_000.0
-    elif token in ("BNB", "WBNB"):
-        price = 600.0
-    elif token == "SOL":
-        price = 150.0
     elif token in KNOWN_PRICES:
         price = KNOWN_PRICES[token]
     else:
-        # Unknown token — return 0 so it gets filtered out
+        # Unknown token — return 0 so it gets filtered out silently
         price = 0.0
 
     _price_cache[token] = (price, now)
@@ -125,7 +162,7 @@ def fetch_wallet_transactions(address: str, chain: str) -> list:
                 "startblock": 0,
                 "endblock":   99_999_999,
                 "page":       1,
-                "offset":     50,
+                "offset":     100,   # fetch last 100 transactions
                 "sort":       "desc",
                 "apikey":     ETHERSCAN_KEY,
             }
@@ -140,7 +177,7 @@ def fetch_wallet_transactions(address: str, chain: str) -> list:
         elif chain_lower == "solana":
             url = (
                 f"https://api.helius.xyz/v0/addresses/{address}"
-                f"/transactions?api-key={HELIUS_KEY}&limit=50"
+                f"/transactions?api-key={HELIUS_KEY}&limit=100"
             )
             r = httpx.get(url, timeout=30)
             if r.status_code == 200:
@@ -154,14 +191,73 @@ def fetch_wallet_transactions(address: str, chain: str) -> list:
 
 def parse_transaction(raw_tx: dict, chain: str = "ethereum"):
     try:
-        # Skip Solana (different schema — handled separately)
+        # ── Solana path ───────────────────────────────────────────────
         if isinstance(raw_tx, dict) and "signature" in raw_tx:
+            timestamp_raw = raw_tx.get("timestamp", 0)
+            try:
+                dt = datetime.fromtimestamp(
+                    int(timestamp_raw), tz=timezone.utc
+                ).replace(tzinfo=None)
+            except Exception:
+                dt = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            # Try SPL token transfers
+            for t in raw_tx.get("tokenTransfers", []):
+                raw_amount   = float(t.get("tokenAmount", 0) or 0)
+                token_symbol = (
+                    t.get("tokenSymbol")
+                    or t.get("symbol")
+                    or t.get("mint", "UNKNOWN")[:8]
+                )
+                token = token_symbol.upper().replace("$", "").strip()
+
+                if token in STABLECOINS:
+                    amt_usd = raw_amount
+                else:
+                    price = get_token_price(token)
+                    if price == 0:
+                        continue
+                    amt_usd = raw_amount * price
+
+                if amt_usd < MIN_ALERT_USD or amt_usd > MAX_REALISTIC_USD:
+                    continue
+
+                return {
+                    "tx_hash":    raw_tx.get("signature"),
+                    "token":      token,
+                    "amount_usd": round(amt_usd, 2),
+                    "action":     "TRANSFER",
+                    "timestamp":  dt,
+                    "from":       t.get("fromUserAccount", ""),
+                    "to":         t.get("toUserAccount", ""),
+                }
+
+            # Try native SOL transfers
+            SOL_PRICE = get_token_price("SOL")
+            for t in raw_tx.get("nativeTransfers", []):
+                lamports   = float(t.get("amount", 0) or 0)
+                sol_amount = lamports / 1_000_000_000
+                amt_usd    = sol_amount * SOL_PRICE
+
+                if amt_usd < MIN_ALERT_USD or amt_usd > MAX_REALISTIC_USD:
+                    continue
+
+                return {
+                    "tx_hash":    raw_tx.get("signature"),
+                    "token":      "SOL",
+                    "amount_usd": round(amt_usd, 2),
+                    "action":     "TRANSFER",
+                    "timestamp":  dt,
+                    "from":       t.get("fromUserAccount", ""),
+                    "to":         t.get("toUserAccount", ""),
+                }
             return None
 
+        # ── EVM path (Etherscan) ──────────────────────────────────────
         token_symbol = raw_tx.get("tokenSymbol", "UNKNOWN")
         token        = token_symbol.upper().replace("$", "").strip()
 
-        # Skip stablecoins and blocklisted tokens BEFORE any calculation
+        # Skip stablecoins and blocklisted tokens before any calculation
         if token in STABLECOINS or token in BLOCKLIST:
             return None
 
@@ -175,7 +271,7 @@ def parse_transaction(raw_tx: dict, chain: str = "ethereum"):
         price   = get_token_price(token)
         amt_usd = token_amount * price
 
-        # Drop unknown tokens (price == 0) and out-of-range amounts
+        # Drop unknown tokens and out-of-range amounts
         if price == 0:
             return None
         if amt_usd < MIN_ALERT_USD or amt_usd > MAX_REALISTIC_USD:
@@ -192,9 +288,9 @@ def parse_transaction(raw_tx: dict, chain: str = "ethereum"):
 
         return {
             "tx_hash":    raw_tx.get("hash"),
-            "token":      token,           # clean format e.g. "ETH" not "$ETH"
+            "token":      token,
             "amount_usd": round(amt_usd, 2),
-            "action":     "TRANSFER",      # collector reclassifies to BUY/SELL
+            "action":     "TRANSFER",
             "timestamp":  dt,
             "from":       raw_tx.get("from", "").lower(),
             "to":         raw_tx.get("to",   "").lower(),
@@ -207,12 +303,22 @@ def parse_transaction(raw_tx: dict, chain: str = "ethereum"):
 if __name__ == "__main__":
     print(f"ETH Price: ${get_eth_price():.2f}")
 
+    # Test ETH wallet
     test_address = "0x9845e1909dca337944a0272f1f9f7249833d2d19"
-    print(f"\nTesting: {test_address}")
+    print(f"\nTesting EVM: {test_address}")
     raw = fetch_wallet_transactions(test_address, "ethereum")
-    print(f"Raw transfers: {len(raw)}")
-
+    print(f"Raw transfers returned: {len(raw)}")
     cleaned = [p for p in (parse_transaction(t) for t in raw) if p]
-    print(f"Non-stable whale moves (>$100k): {len(cleaned)}")
+    print(f"Whale moves (>$50k): {len(cleaned)}")
     for tx in cleaned[:5]:
+        print(f"  {tx['action']} {tx['token']} ${tx['amount_usd']:,.2f} at {tx['timestamp']}")
+
+    # Test Solana wallet
+    sol_address = "DEXCD63uBftz5TTyRJqqgmPA1sidnYrGToKoXTwfgywo"
+    print(f"\nTesting Solana: {sol_address}")
+    raw_sol = fetch_wallet_transactions(sol_address, "solana")
+    print(f"Raw Solana txs: {len(raw_sol)}")
+    cleaned_sol = [p for p in (parse_transaction(t) for t in raw_sol) if p]
+    print(f"Solana whale moves (>$50k): {len(cleaned_sol)}")
+    for tx in cleaned_sol[:3]:
         print(f"  {tx['action']} {tx['token']} ${tx['amount_usd']:,.2f}")

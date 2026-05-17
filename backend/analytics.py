@@ -15,27 +15,33 @@ STABLECOINS = [
     "USDE", "PYUSD", "GUSD", "HUSD", "SUSD",
 ]
 
+# Only obvious scam/exploit tokens — meme coins are allowed through
 BLOCKLIST = [
-    "TRUMPTROLL", "XDOGE", "KISHU", "WOJAK", "XD", "AKITA",
-    "CONAN", "FREE", "VOLT", "CHUD", "BAD", "DTOKEN", "PEIPEI",
-    "4CHAN", "XEN", "STARL", "FAERIEDRAGON", "BIDEN", "HQG",
-    "ETHF", "ETHG", "AF1", "AFO", "ETHFATHER",
+    "TRUMPTROLL", "XDOGE", "KISHU", "XD",
+    "CHUD", "BAD", "DTOKEN", "PEIPEI",
+    "4CHAN", "XEN", "STARL", "FAERIEDRAGON",
+    "BIDEN", "HQG", "ETHF", "ETHG",
+    "AF1", "AFO", "ETHFATHER",
+    "WETH", "WBTC", "WBNB", "WMATIC", "WAVAX",
 ]
 
 BUY_INSIGHTS = [
     "Large position opened by a tracked smart wallet. Monitor for follow-up activity.",
     "Significant buy detected above threshold. Watch price action closely.",
     "Smart wallet accumulating — position size suggests high conviction. DYOR.",
+    "On-chain data confirms real capital deployment. Not a small retail move.",
 ]
 SELL_INSIGHTS = [
     "Smart wallet reducing position. Watch for potential price impact.",
     "Large sell detected — tracked wallet exiting. Monitor for continuation.",
     "Significant outflow from a monitored wallet. Assess your own exposure.",
+    "Distribution signal — tracked wallet is taking profit or rotating capital.",
 ]
 CLUSTER_INSIGHTS = [
     "Multiple tracked wallets moved the same token recently. Unusual coordinated activity.",
     "Cluster of smart wallets accumulating within 12 hours. Worth watching closely.",
     "Several independent wallets in sync — rare pattern. Monitor for follow-through.",
+    "Coordinated accumulation by 2+ tracked wallets. Strong confluence signal.",
 ]
 
 
@@ -73,7 +79,7 @@ def send_alert_safe(alert_data: dict):
 
 
 def clean_token(raw: str) -> str:
-    """Always return uppercase token without $ prefix e.g. ETH not $ETH."""
+    """Always return uppercase token without $ prefix — e.g. ETH not $ETH."""
     return raw.replace("$", "").strip().upper()
 
 
@@ -81,9 +87,10 @@ def detect_signals():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=RealDictCursor)
 
+    # Look back 1 hour, $50k minimum, $50M maximum
     cur.execute("""
         SELECT * FROM transactions
-        WHERE amount_usd >= 100000
+        WHERE amount_usd >= 50000
           AND amount_usd <= 50000000
           AND timestamp > NOW() - INTERVAL '1 hour'
     """)
@@ -101,23 +108,25 @@ def detect_signals():
         if token in STABLECOINS or token in BLOCKLIST:
             continue
 
-        # Score by size
+        # Score by size — $50k is the floor, $1M+ is mega whale
         if   usd >= 1_000_000: score = 95
         elif usd >=   500_000: score = 85
         elif usd >=   250_000: score = 80
-        else:                  score = 75
+        elif usd >=   100_000: score = 75
+        else:                  score = 65   # $50k–$100k — notable but smaller
 
-        # Deduplication — skip if same token+action signal in last 30 min
+        # Deduplication — same token + action only once per 2 hours
+        # This prevents the same transaction firing every collection cycle
         cur.execute("""
             SELECT COUNT(*) as count FROM signals
             WHERE token = %s
               AND signal_type = %s
-              AND created_at > NOW() - INTERVAL '30 minutes'
+              AND created_at > NOW() - INTERVAL '2 hours'
         """, (token, action))
         if cur.fetchone()["count"] > 0:
             continue
 
-        # Insert signal — includes amount_usd
+        # Insert signal with amount_usd
         cur.execute("""
             INSERT INTO signals
                 (signal_type, token, conviction_score, wallets_involved, chain, amount_usd)
@@ -131,7 +140,7 @@ def detect_signals():
             tx.get("chain", "ethereum"),
             usd,
         ))
-        new_signal = cur.fetchone()
+        cur.fetchone()
         count += 1
 
         print(f"  Signal: {action} {token} ${usd:,.0f} score={score}")
@@ -156,6 +165,7 @@ def detect_clusters():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=RealDictCursor)
 
+    # Cluster = 2+ different wallets bought same token in last 12 hours
     cur.execute("""
         SELECT
             token,
@@ -164,7 +174,7 @@ def detect_clusters():
             SUM(amount_usd)                AS total_usd
         FROM transactions
         WHERE timestamp   > NOW() - INTERVAL '12 hours'
-          AND amount_usd >= 100000
+          AND amount_usd >= 50000
           AND amount_usd <= 50000000
         GROUP BY token
         HAVING COUNT(DISTINCT wallet_address) >= 2
@@ -180,17 +190,17 @@ def detect_clusters():
         score = min(int(c["wallet_count"]) * 20, 100)
         total = float(c["total_usd"] or 0)
 
-        # Deduplication
+        # Deduplication — same cluster only once per 6 hours
         cur.execute("""
             SELECT COUNT(*) as count FROM signals
             WHERE token = %s
               AND signal_type = 'CLUSTER'
-              AND created_at > NOW() - INTERVAL '60 minutes'
+              AND created_at > NOW() - INTERVAL '6 hours'
         """, (token,))
         if cur.fetchone()["count"] > 0:
             continue
 
-        # Insert cluster signal — includes amount_usd
+        # Insert cluster signal with amount_usd
         cur.execute("""
             INSERT INTO signals
                 (signal_type, token, conviction_score, wallets_involved, chain, amount_usd)
@@ -204,7 +214,7 @@ def detect_clusters():
             c["chain"],
             total,
         ))
-        new_cluster = cur.fetchone()
+        cur.fetchone()
         inserted += 1
 
         print(f"  Cluster: {token} {c['wallet_count']} wallets ${total:,.0f} score={score}")
