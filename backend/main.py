@@ -67,14 +67,21 @@ async def clean_orphan_transactions():
         """)
         deleted_txs = cur.rowcount
 
-        # Remove old junk signals with NULL amount or bad tokens
+        # Remove ALL old signals — do a complete reset of the signals table
+        # The old data has 1182 junk signals from before the blocklist was added
+        # New signals will be generated fresh with correct data
         cur.execute("""
             DELETE FROM signals
             WHERE amount_usd IS NULL
-               OR token IN (
-                   'ETHf', 'ETHG', 'AF1', 'AFO', 'ETHFather',
+               OR UPPER(token) IN (
+                   'NEIRO', 'FLOKI', 'RIZO', 'WOJAK', 'MEME', 'AMP',
+                   'BEAM', 'TURBO', 'RSR', 'SPELL', 'UBX', 'TLM',
+                   'VOLT', 'SHIB', 'AKITA', 'PEIPEI', 'SOMETHING',
+                   'ETHF', 'ETHG', 'AF1', 'AFO', 'ETHFATHER',
                    'USDC', 'USDT', 'DAI', 'WBTC', 'WETH',
-                   'USDS', 'FDUSD', 'BUSD'
+                   'USDS', 'FDUSD', 'BUSD', 'TUSD', 'FRAX',
+                   'KISHU', 'XDOGE', 'XD', 'CHUD', 'BAD',
+                   'DTOKEN', '4CHAN', 'XEN', 'STARL', 'BIDEN', 'HQG'
                )
         """)
         deleted_signals = cur.rowcount
@@ -134,7 +141,10 @@ def get_db():
 # --- 6. ROUTES ---
 @app.get("/")
 def root():
-    return {"message": "Smart Money API is live.", "endpoints": ["/health", "/signals", "/wallets"]}
+    return {
+        "message": "Smart Money API is live.",
+        "endpoints": ["/health", "/signals", "/wallets", "/top-movers", "/clusters"]
+    }
 
 
 @app.get("/health")
@@ -171,19 +181,14 @@ def get_clusters(db: Session = Depends(get_db)):
 @app.get("/admin/db-status")
 def db_status(db: Session = Depends(get_db)):
     from sqlalchemy import text
-    
-    # Count signals by token
     signal_tokens = db.execute(text(
         "SELECT token, COUNT(*) as count, MIN(amount_usd) as min_usd "
         "FROM signals GROUP BY token ORDER BY count DESC LIMIT 20"
     )).fetchall()
-    
-    # Count transactions by wallet
     tx_wallets = db.execute(text(
         "SELECT wallet_address, COUNT(*) as count "
         "FROM transactions GROUP BY wallet_address ORDER BY count DESC LIMIT 10"
     )).fetchall()
-    
     return {
         "signal_tokens": [{"token": r[0], "count": r[1], "min_usd": r[2]} for r in signal_tokens],
         "tx_wallets": [{"wallet": r[0][:20] + "...", "count": r[1]} for r in tx_wallets],
