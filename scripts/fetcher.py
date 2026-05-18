@@ -24,45 +24,46 @@ BLOCKLIST = {
 }
 
 FALLBACK_PRICES = {
+    # Major assets
     "ETH": 2500.0, "WETH": 2500.0,
     "WBTC": 95000.0,
     "BNB": 600.0, "WBNB": 600.0,
+    "SOL": 150.0,
+    "AVAX": 25.0, "MATIC": 0.55,
+    "ARB":  0.45, "OP":   0.90,
+    # Stablecoins
+    "USDC": 1.0, "USDT": 1.0, "DAI": 1.0, "FRAX": 1.0,
+    "LUSD": 1.0, "USDP": 1.0, "USDS": 1.0, "FDUSD": 1.0,
+    "BUSD": 1.0, "TUSD": 1.0,
+    # DeFi blue chips
+    "LINK": 14.0, "UNI":  7.0, "AAVE": 180.0,
+    "CRV":  0.35, "LDO":  1.20, "MKR": 1800.0,
+    "SNX":  2.50, "BAL":  2.80, "SUSHI": 0.80,
+    "COMP": 45.0, "YFI":  6000.0,
+    "GMX":  18.0, "GNS":  1.80,
+    "PENDLE": 3.50, "RPL": 10.0,
+    # Tokens your wallets actually trade (from transaction history)
+    "GRT":  0.12,   # The Graph
+    "ONDO": 0.85,   # Ondo Finance
+    "ARKM": 1.20,   # Arkham Intelligence
+    "ATA":  0.05,   # Automata Network
+    "REQ":  0.08,   # Request Network
+    "GALA": 0.02,   # Gala Games
+    "MYRIA": 0.003, # Myria
+    "MOODENG": 0.18,# Moo Deng
+    "GME":  5.50,   # GameStop token
+    # Meme / large caps
     "PEPE": 0.0000142,
     "SHIB": 0.0000248,
     "DOGE": 0.38,
     "FLOKI": 0.000195,
-    "LINK": 14.0,
-    "UNI":  7.0,
-    "AAVE": 180.0,
-    "ARB":  0.45,
-    "OP":   0.90,
-    "MATIC": 0.55,
-    "SOL":  150.0,
-    "CRV":  0.35,
-    "LDO":  1.20,
-    "MKR":  1800.0,
-    "SNX":  2.50,
-    "BAL":  2.80,
-    "SUSHI": 0.80,
-    "COMP": 45.0,
-    "YFI":  6000.0,
-    "GMX":  18.0,
-    "GNS":  1.80,
 }
 for s in STABLECOINS:
     FALLBACK_PRICES[s] = 1.0
 
-COINGECKO_IDS = {
-    "ETH": "ethereum", "WETH": "weth", "WBTC": "wrapped-bitcoin",
-    "BNB": "binancecoin", "WBNB": "wbnb",
-    "PEPE": "pepe", "SHIB": "shiba-inu", "DOGE": "dogecoin",
-    "FLOKI": "floki", "LINK": "chainlink", "UNI": "uniswap",
-    "AAVE": "aave", "ARB": "arbitrum", "OP": "optimism",
-    "MATIC": "matic-network", "SOL": "solana",
-    "CRV": "curve-dao-token", "LDO": "lido-dao",
-    "MKR": "maker", "SNX": "synthetix-network-token",
-    "GMX": "gmx", "GNS": "gains-network",
-}
+# No CoinGecko — it returned prices for garbage tokens (SHIT, KURURU, COCORO etc)
+# causing fake alerts. All prices are hardcoded in FALLBACK_PRICES above.
+# Add new tokens there as your wallets trade them.
 
 # Amount filters
 MIN_ALERT_USD     =    50_000   # $50k floor — real smart money moves
@@ -131,13 +132,8 @@ def get_token_price(symbol: str) -> float:
         _price_cache[token] = (price, now)
         return price
 
-    # Live CoinGecko lookup
-    cg_id = COINGECKO_IDS.get(token, token.lower())
-    price = get_price_coingecko(cg_id)
-    if price > 0:
-        _price_cache[token] = (price, now)
-        return price
-
+    # Token not in our known list — return 0 and drop it.
+    # Add tokens to FALLBACK_PRICES above as your wallets trade them.
     _price_cache[token] = (0.0, now)
     return 0.0
 
