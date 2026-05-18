@@ -5,63 +5,98 @@ from sqlalchemy import func
 from contextlib import asynccontextmanager
 from datetime import datetime
 import asyncio
+import os
 
 # Core Imports
 from backend.database import SessionLocal, engine
 from backend.models import Signal, Wallet, Transaction, Base
 from backend.analytics import run_analytics
-from scripts.collector import run_collection 
+from scripts.collector import run_collection
+
 
 # --- 1. SEEDER FUNCTION ---
 def seed_wallets_if_empty():
     db = SessionLocal()
     try:
-        count = db.query(Wallet).count()
-        if count == 0:
-            print("🌱 Seeding wallets from wallets.json...")
-            import json, os
-            json_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'wallets.json')
-            with open(json_path, 'r') as f:
-                smart_wallets = json.load(f)
-            for w_data in smart_wallets:
-                db.add(Wallet(**w_data))
+        import json
+        json_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'wallets.json')
+        with open(json_path, 'r') as f:
+            smart_wallets = json.load(f)
+
+        existing_count = db.query(Wallet).count()
+        json_count = len(smart_wallets)
+
+        if existing_count != json_count:
+            print(f"Wallet count mismatch ({existing_count} in DB vs {json_count} in JSON). Syncing...")
+            db.query(Wallet).delete()
             db.commit()
-            print(f"✅ Seeding complete: {len(smart_wallets)} wallets added.")
+            for w_data in smart_wallets:
+                db.add(Wallet(
+                    address=w_data['address'],
+                    label=w_data['label'],
+                    chain=w_data['chain']
+                ))
+            db.commit()
+            print(f"Synced: {json_count} wallets now in DB.")
         else:
-            print(f"✔️ Wallets already exist ({count}). No seeding needed.")
+            print(f"Wallets already synced ({existing_count} wallets).")
     except Exception as e:
-        print(f"❌ Seed Error: {e}")
+        print(f"Seed Error: {e}")
     finally:
         db.close()
 
-# --- 2. BACKGROUND SCHEDULER ---
+
+# --- 2. CLEANUP FUNCTION ---
+async def clean_orphan_transactions():
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        return
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    try:
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM transactions
+            WHERE wallet_address NOT IN (
+                SELECT address FROM wallets
+            )
+        """)
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"Removed {deleted} transactions from old wallets")
+    except Exception as e:
+        print(f"Cleanup error: {e}")
+
+
+# --- 3. BACKGROUND SCHEDULER ---
 async def engine_scheduler():
     while True:
         try:
-            print("🔄 Triggering Wallet Collection & Analytics...")
-            # This calls the collector, which in turn calls analytics
+            print("Triggering Wallet Collection & Analytics...")
             await asyncio.to_thread(run_collection)
         except Exception as e:
-            print(f"❌ Engine Error: {e}")
-        
-        print("😴 Cycle complete. Sleeping for 10 minutes...")
-        await asyncio.sleep(600) 
+            print(f"Engine Error: {e}")
+        print("Cycle complete. Sleeping for 10 minutes...")
+        await asyncio.sleep(600)
 
-# --- 3. LIFESPAN MANAGEMENT ---
+
+# --- 4. LIFESPAN ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize Tables
-    print("🚀 Initializing Database Tables...")
+    print("Initializing Database Tables...")
     Base.metadata.create_all(bind=engine)
-    
-    # Seed Data
     await asyncio.to_thread(seed_wallets_if_empty)
-    
-    # FIX: Changed 'analytics_scheduler' to 'engine_scheduler' to match definition above
+    await clean_orphan_transactions()
     task = asyncio.create_task(engine_scheduler())
     yield
     task.cancel()
 
+
+# --- 5. APP ---
 app = FastAPI(title="Smart Money API", lifespan=lifespan)
 
 app.add_middleware(
@@ -72,6 +107,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -79,30 +115,38 @@ def get_db():
     finally:
         db.close()
 
-# --- 4. ROUTES ---
+
+# --- 6. ROUTES ---
 @app.get("/")
 def root():
     return {"message": "Smart Money API is live.", "endpoints": ["/health", "/signals", "/wallets"]}
+
 
 @app.get("/health")
 def health():
     return {"status": "online", "engine": "running"}
 
+
 @app.get("/signals")
 def get_signals(db: Session = Depends(get_db)):
     return db.query(Signal).order_by(Signal.created_at.desc()).all()
+
 
 @app.get("/wallets")
 def get_wallets(db: Session = Depends(get_db)):
     return db.query(Wallet).all()
 
+
 @app.get("/top-movers")
 def get_top_movers(db: Session = Depends(get_db)):
     results = db.query(
-        Transaction.token, 
+        Transaction.token,
         func.count(Transaction.id).label('count')
-    ).group_by(Transaction.token).order_by(func.count(Transaction.id).desc()).limit(10).all()
+    ).group_by(Transaction.token).order_by(
+        func.count(Transaction.id).desc()
+    ).limit(10).all()
     return [{"token": r[0], "count": r[1]} for r in results]
+
 
 @app.get("/clusters")
 def get_clusters(db: Session = Depends(get_db)):
