@@ -14,7 +14,13 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 if not DATABASE_URL:
     DATABASE_URL = "postgresql://postgres:DESmond12$$@localhost:5432/smart_money_db"
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_size=5,
+    max_overflow=2
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -29,8 +35,6 @@ def save_transaction(tx_data):
         if existing:
             return False
 
-        # Use the REAL transaction timestamp from the blockchain
-        # not datetime.utcnow() — that was causing old txs to look new
         real_timestamp = tx_data.get('timestamp')
         if not isinstance(real_timestamp, datetime):
             real_timestamp = datetime.utcnow()

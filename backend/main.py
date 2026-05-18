@@ -57,17 +57,32 @@ async def clean_orphan_transactions():
         import psycopg2
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
+
+        # Remove transactions from wallets no longer tracked
         cur.execute("""
             DELETE FROM transactions
             WHERE wallet_address NOT IN (
                 SELECT address FROM wallets
             )
         """)
-        deleted = cur.rowcount
+        deleted_txs = cur.rowcount
+
+        # Remove old junk signals with NULL amount or bad tokens
+        cur.execute("""
+            DELETE FROM signals
+            WHERE amount_usd IS NULL
+               OR token IN (
+                   'ETHf', 'ETHG', 'AF1', 'AFO', 'ETHFather',
+                   'USDC', 'USDT', 'DAI', 'WBTC', 'WETH',
+                   'USDS', 'FDUSD', 'BUSD'
+               )
+        """)
+        deleted_signals = cur.rowcount
+
         conn.commit()
         cur.close()
         conn.close()
-        print(f"Removed {deleted} transactions from old wallets")
+        print(f"Removed {deleted_txs} orphan transactions, {deleted_signals} junk signals")
     except Exception as e:
         print(f"Cleanup error: {e}")
 
