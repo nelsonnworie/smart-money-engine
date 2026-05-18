@@ -166,3 +166,27 @@ def get_top_movers(db: Session = Depends(get_db)):
 @app.get("/clusters")
 def get_clusters(db: Session = Depends(get_db)):
     return db.query(Signal).filter(Signal.signal_type == 'CLUSTER').all()
+
+
+@app.get("/admin/db-status")
+def db_status(db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    
+    # Count signals by token
+    signal_tokens = db.execute(text(
+        "SELECT token, COUNT(*) as count, MIN(amount_usd) as min_usd "
+        "FROM signals GROUP BY token ORDER BY count DESC LIMIT 20"
+    )).fetchall()
+    
+    # Count transactions by wallet
+    tx_wallets = db.execute(text(
+        "SELECT wallet_address, COUNT(*) as count "
+        "FROM transactions GROUP BY wallet_address ORDER BY count DESC LIMIT 10"
+    )).fetchall()
+    
+    return {
+        "signal_tokens": [{"token": r[0], "count": r[1], "min_usd": r[2]} for r in signal_tokens],
+        "tx_wallets": [{"wallet": r[0][:20] + "...", "count": r[1]} for r in tx_wallets],
+        "total_signals": db.execute(text("SELECT COUNT(*) FROM signals")).scalar(),
+        "total_transactions": db.execute(text("SELECT COUNT(*) FROM transactions")).scalar(),
+    }
