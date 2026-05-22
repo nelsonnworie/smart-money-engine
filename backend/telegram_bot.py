@@ -1,3 +1,18 @@
+"""
+telegram_bot.py — Alert delivery
+==================================
+Fix applied:
+  signal_type is now ALWAYS a raw action: BUY | SELL | CLUSTER
+  This file builds the display label ONCE.
+  analytics.py no longer pre-builds the headline string.
+
+  Before (broken):  analytics builds "SIGNIFICANT WHALE BUY"
+                    → Telegram prepends → "SIGNIFICANT WHALE SIGNIFICANT WHALE BUY" ✗
+
+  After (fixed):    analytics passes "BUY"
+                    → Telegram builds → "SIGNIFICANT WHALE BUY" ✓
+"""
+
 import os
 import asyncio
 from telegram import Bot
@@ -8,73 +23,106 @@ load_dotenv()
 TOKEN   = os.getenv("SMART_MONEY_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+CHAIN_EXPLORER = {
+    "ethereum": ("Etherscan",  "https://etherscan.io/search?q="),
+    "arbitrum": ("Arbiscan",   "https://arbiscan.io/search?q="),
+    "base":     ("Basescan",   "https://basescan.org/search?q="),
+    "bsc":      ("BscScan",    "https://bscscan.com/search?q="),
+    "solana":   ("Solscan",    "https://solscan.io/search?q="),
+}
 
-async def send_telegram_alert(signal_data):
-    score        = signal_data.get('conviction_score', 0)
-    raw_token    = signal_data.get('token', 'UNKNOWN')
-    signal_type  = signal_data.get('signal_type', 'BUY')
-    amount_usd   = signal_data.get('amount_usd', 0)
-    chain        = signal_data.get('chain', 'ethereum').capitalize()
-    wallet       = signal_data.get('wallet', '')
-    insight      = signal_data.get('insight', '')
+DASHBOARD_URL = os.getenv(
+    "DASHBOARD_URL",
+    "https://v0-project-seven-amber-60.vercel.app"
+)
 
-    token_name = raw_token.lstrip('$').strip()
-    amount_str = f"${amount_usd:,.2f}"
+
+def _build_header(signal_type: str, score: int) -> str:
+    """
+    Builds the display label from the raw signal_type.
+    signal_type must be: BUY | SELL | CLUSTER
+    score determines whale tier.
+
+    This function is the ONLY place display labels are constructed.
+    """
+    action = signal_type.upper().strip()
 
     if score >= 90:
-        header = f"<b>MEGA WHALE {signal_type}</b>"
+        tier = "🐋 MEGA WHALE"
     elif score >= 75:
-        header = f"<b>SIGNIFICANT WHALE {signal_type}</b>"
+        tier = "🐳 SIGNIFICANT WHALE"
     else:
-        header = f"<b>WHALE {signal_type} DETECTED</b>"
+        tier = "🐬 WHALE"
 
+    if action == "CLUSTER":
+        return f"<b>{tier} CLUSTER DETECTED</b>"
+    elif action == "BUY":
+        return f"<b>{tier} BUY DETECTED</b>"
+    elif action == "SELL":
+        return f"<b>{tier} SELL DETECTED</b>"
+    else:
+        return f"<b>{tier} SIGNAL DETECTED</b>"
+
+
+async def send_telegram_alert(signal_data: dict):
+    score       = signal_data.get("conviction_score", 0)
+    raw_token   = signal_data.get("token", "UNKNOWN")
+    signal_type = signal_data.get("signal_type", "BUY")   # raw: BUY | SELL | CLUSTER
+    amount_usd  = signal_data.get("amount_usd", 0)
+    chain       = (signal_data.get("chain", "ethereum") or "ethereum").lower()
+    wallet      = signal_data.get("wallet", "")
+    insight     = signal_data.get("insight", "")
+
+    token_name = raw_token.lstrip("$").strip()
+    amount_str = f"${amount_usd:,.2f}"
+
+    # ── Build header ONCE from raw signal_type ──────────────────────────────
+    header = _build_header(signal_type, score)
+
+    # ── Wallet display ──────────────────────────────────────────────────────
     if isinstance(wallet, str) and wallet.startswith("0x") and len(wallet) > 12:
         wallet_display = f"{wallet[:6]}...{wallet[-4:]}"
     else:
-        wallet_display = wallet
+        wallet_display = wallet[:30] if len(wallet) > 30 else wallet
 
-    chain_lower = chain.lower()
-    explorer_urls = {
-        'ethereum': f"https://etherscan.io/search?q={token_name}",
-        'arbitrum': f"https://arbiscan.io/search?q={token_name}",
-        'base':     f"https://basescan.org/search?q={token_name}",
-        'bsc':      f"https://bscscan.com/search?q={token_name}",
-        'solana':   f"https://solscan.io/search?q={token_name}",
-    }
-    explorer_labels = {
-        'ethereum': 'View on Etherscan',
-        'arbitrum': 'View on Arbiscan',
-        'base':     'View on Basescan',
-        'bsc':      'View on BscScan',
-        'solana':   'View on Solscan',
-    }
-    explorer_url   = explorer_urls.get(chain_lower, explorer_urls['ethereum'])
-    explorer_label = explorer_labels.get(chain_lower, 'View on Etherscan')
+    # ── Explorer link ───────────────────────────────────────────────────────
+    explorer_name, explorer_base = CHAIN_EXPLORER.get(
+        chain, ("Etherscan", "https://etherscan.io/search?q=")
+    )
+    explorer_url = f"{explorer_base}{token_name}"
 
+    # ── Insight line ────────────────────────────────────────────────────────
     insight_line = f"\n<i>{insight}</i>\n" if insight else "\n"
+
+    # ── Signal label for body ───────────────────────────────────────────────
+    signal_label = signal_type.upper()
 
     message = (
         f"{header}\n\n"
         f"Token:   <code>${token_name}</code>\n"
-        f"Signal:  <code>{signal_type}</code>\n"
+        f"Signal:  <code>{signal_label}</code>\n"
         f"Amount:  {amount_str}\n"
-        f"Chain:   {chain}\n"
+        f"Chain:   {chain.capitalize()}\n"
         f"Wallet:  <code>{wallet_display}</code>\n"
         f"Score:   {score}/100\n"
         f"{insight_line}"
-        f"<a href='https://v0-project-seven-amber-60.vercel.app/?token={token_name}&chain={chain_lower}&wallet={wallet}'>View on Dashboard</a>\n"
-        f"<a href='{explorer_url}'>{explorer_label}</a>"
+        f"<a href='{DASHBOARD_URL}/?token={token_name}&chain={chain}&wallet={wallet}'>📊 View Dashboard</a>  "
+        f"<a href='{explorer_url}'>🔍 {explorer_name}</a>"
     )
+
+    if not TOKEN or not CHAT_ID:
+        print(f"⚠️ Telegram not configured — would have sent:\n{message}")
+        return
 
     bot = Bot(token=TOKEN)
     async with bot:
         await bot.send_message(
             chat_id=CHAT_ID,
             text=message,
-            parse_mode='HTML',
-            disable_web_page_preview=True
+            parse_mode="HTML",
+            disable_web_page_preview=True,
         )
-    print(f"✅ Alert sent: ${token_name} {amount_str} ({score}/100)")
+    print(f"✅ Alert sent: ${token_name} {signal_label} {amount_str} (score: {score}/100)")
 
 
 if __name__ == "__main__":

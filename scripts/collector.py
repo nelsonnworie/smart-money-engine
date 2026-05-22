@@ -1,14 +1,22 @@
+"""
+collector.py — Wallet scanning & transaction collection
+=========================================================
+Uses chain-specific parser classes from fetcher.py.
+BUY/SELL classification is done inside each parser — not here.
+Permanent deduplication happens in analytics.py via processed_transactions.
+"""
+
 import sys
 import os
 import time
-from apscheduler.schedulers.blocking import BlockingScheduler
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.database import SessionLocal, save_transaction
 from backend.models import Wallet
-from scripts.fetcher import fetch_wallet_transactions, parse_transaction
-from backend.analytics import run_analytics 
+from scripts.fetcher import get_parser
+from backend.analytics import run_analytics
+
 
 def run_collection():
     db = SessionLocal()
@@ -16,59 +24,76 @@ def run_collection():
         wallets = db.query(Wallet).all()
         print(f"\n🔄 Starting collection cycle for {len(wallets)} wallets...")
 
+        chain_counts: dict[str, int] = {}
+
         for wallet in wallets:
-            print(f"📡 Scanning: {wallet.label} [{wallet.chain}]...          ", end="\r", flush=True)
-            
+            chain = (wallet.chain or "ethereum").lower()
+            parser = get_parser(chain)
+
+            if not parser:
+                print(f"⚠️ No parser for chain '{chain}' — skipping {wallet.label}")
+                continue
+
+            print(
+                f"📡 Scanning: {wallet.label} [{chain}]...          ",
+                end="\r", flush=True
+            )
+
             try:
-                raw_txs = fetch_wallet_transactions(wallet.address, wallet.chain)
-                if not raw_txs:
+                parsed_txs = parser.get_transactions(wallet.address)
+
+                if not parsed_txs:
                     continue
 
                 new_count = 0
-                for tx in raw_txs:
-                    parsed = parse_transaction(tx)
+                for parsed in parsed_txs:
                     if not parsed:
                         continue
 
-                    parsed['wallet_address'] = wallet.address
-                    parsed['chain'] = wallet.chain
-                    
-                    # Proper BUY / SELL detection
-                    if parsed.get('to', '').lower() == wallet.address.lower():
-                        parsed['action'] = 'BUY'
-                    else:
-                        parsed['action'] = 'SELL'
-                    
-                    # Save only if new
+                    # Ensure wallet context is set (parsers set this, but safety check)
+                    parsed.setdefault("wallet_address", wallet.address)
+                    parsed.setdefault("chain", chain)
+
+                    # save_transaction deduplicates by tx_hash at DB level
                     if save_transaction(parsed):
                         new_count += 1
-                
+
                 if new_count > 0:
-                    print(f"\n✅ {wallet.label}: Logged {new_count} NEW moves.")
-            
-            except Exception:
+                    chain_counts[chain] = chain_counts.get(chain, 0) + new_count
+                    print(f"\n✅ {wallet.label} [{chain}]: {new_count} new moves logged.")
+
+            except Exception as e:
+                print(f"\n⚠️ Error scanning {wallet.label}: {e}")
                 continue
 
-            time.sleep(0.6)  # gentle rate limit
+            time.sleep(0.6)   # gentle rate limit — respect Etherscan/Helius limits
 
-        # Run analytics after all wallets
-        print("\n🧠 Running analytics...")
+        # Summary
+        if chain_counts:
+            print(f"\n📊 Collection summary: {chain_counts}")
+        else:
+            print("\n📊 No new transactions found this cycle.")
+
+        # Run analytics on collected data
+        print("\n🧠 Running analytics engine...")
         run_analytics()
 
     except Exception as e:
         print(f"\n⚠️ Collector Error: {e}")
     finally:
         db.close()
-        print("🏁 Cycle complete.\n")
+        print("🏁 Collection cycle complete.\n")
 
-# === MAIN ===
+
 if __name__ == "__main__":
+    from apscheduler.schedulers.blocking import BlockingScheduler
+
+    run_collection()   # run immediately on start
+
     scheduler = BlockingScheduler()
-    run_collection()                    # run once immediately
-    
     print("⏰ Scheduler started (every 5 minutes)...")
-    scheduler.add_job(run_collection, 'interval', minutes=5)
-    
+    scheduler.add_job(run_collection, "interval", minutes=5)
+
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

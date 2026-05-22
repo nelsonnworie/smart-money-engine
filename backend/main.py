@@ -1,20 +1,20 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from contextlib import asynccontextmanager
-from datetime import datetime
 import asyncio
 import os
 
-# Core Imports
 from backend.database import SessionLocal, engine
-from backend.models import Signal, Wallet, Transaction, Base
-from backend.analytics import run_analytics
+from backend.models import Signal, Wallet, Transaction, ProcessedTransaction, Base
 from scripts.collector import run_collection
 
 
-# --- 1. SEEDER FUNCTION ---
+# ---------------------------------------------------------------------------
+# Wallet seeder
+# ---------------------------------------------------------------------------
+
 def seed_wallets_if_empty():
     db = SessionLocal()
     try:
@@ -24,93 +24,105 @@ def seed_wallets_if_empty():
             smart_wallets = json.load(f)
 
         existing_count = db.query(Wallet).count()
-        json_count = len(smart_wallets)
+        json_count     = len(smart_wallets)
 
         if existing_count != json_count:
             print(f"Wallet count mismatch ({existing_count} in DB vs {json_count} in JSON). Syncing...")
             db.query(Wallet).delete()
             db.commit()
-            for w_data in smart_wallets:
-                db.add(Wallet(
-                    address=w_data['address'],
-                    label=w_data['label'],
-                    chain=w_data['chain']
-                ))
+            for w in smart_wallets:
+                db.add(Wallet(address=w['address'], label=w['label'], chain=w['chain']))
             db.commit()
-            print(f"Synced: {json_count} wallets now in DB.")
+            print(f"✅ Synced: {json_count} wallets.")
         else:
-            print(f"Wallets already synced ({existing_count} wallets).")
+            print(f"✅ Wallets synced ({existing_count} wallets).")
     except Exception as e:
         print(f"Seed Error: {e}")
     finally:
         db.close()
 
 
-# --- 2. CLEANUP FUNCTION ---
+# ---------------------------------------------------------------------------
+# Junk cleanup
+# ---------------------------------------------------------------------------
+
+JUNK_TOKENS = [
+    'NEIRO','FLOKI','RIZO','X','WOJAK','MEME','AMP','BEAM','TURBO',
+    'RSR','SPELL','UBX','TLM','VOLT','SHIB','AKITA','PEIPEI','SOMETHING',
+    'ETHF','ETHG','AF1','AFO','ETHFATHER','USDC','USDT','DAI','WBTC','WETH',
+    'USDS','FDUSD','BUSD','TUSD','FRAX','KISHU','XDOGE','XD','CHUD','BAD',
+    'DTOKEN','4CHAN','XEN','STARL','BIDEN','HQG','TRUMPTROLL','CONAN','FREE',
+    'FAERIEDRAGON','SHIB2','ELONGATE','SAFEMOON',
+]
+
+
 async def clean_orphan_transactions():
     DATABASE_URL = os.getenv("DATABASE_URL")
     if not DATABASE_URL:
+        print("No DATABASE_URL — skipping cleanup.")
         return
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     try:
         import psycopg2
         conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+        cur  = conn.cursor()
 
-        # Remove transactions from wallets no longer tracked
         cur.execute("""
             DELETE FROM transactions
-            WHERE wallet_address NOT IN (
-                SELECT address FROM wallets
-            )
+            WHERE wallet_address NOT IN (SELECT address FROM wallets)
         """)
         deleted_txs = cur.rowcount
 
-        # Remove ALL old signals — do a complete reset of the signals table
-        # The old data has 1182 junk signals from before the blocklist was added
-        # New signals will be generated fresh with correct data
-        cur.execute("""
+        placeholders = ", ".join(["%s"] * len(JUNK_TOKENS))
+        cur.execute(f"""
             DELETE FROM signals
             WHERE amount_usd IS NULL
-               OR UPPER(token) IN (
-                   'NEIRO', 'FLOKI', 'RIZO', 'WOJAK', 'MEME', 'AMP',
-                   'BEAM', 'TURBO', 'RSR', 'SPELL', 'UBX', 'TLM',
-                   'VOLT', 'SHIB', 'AKITA', 'PEIPEI', 'SOMETHING',
-                   'ETHF', 'ETHG', 'AF1', 'AFO', 'ETHFATHER',
-                   'USDC', 'USDT', 'DAI', 'WBTC', 'WETH',
-                   'USDS', 'FDUSD', 'BUSD', 'TUSD', 'FRAX',
-                   'KISHU', 'XDOGE', 'XD', 'CHUD', 'BAD',
-                   'DTOKEN', '4CHAN', 'XEN', 'STARL', 'BIDEN', 'HQG'
-               )
-        """)
+               OR UPPER(REPLACE(token, '$', '')) IN ({placeholders})
+        """, JUNK_TOKENS)
         deleted_signals = cur.rowcount
+
+        cur.execute(f"""
+            DELETE FROM transactions
+            WHERE UPPER(REPLACE(token, '$', '')) IN ({placeholders})
+        """, JUNK_TOKENS)
+        deleted_txs_junk = cur.rowcount
 
         conn.commit()
         cur.close()
         conn.close()
-        print(f"Removed {deleted_txs} orphan transactions, {deleted_signals} junk signals")
+        print(
+            f"🧹 Cleanup: {deleted_txs} orphan txs, "
+            f"{deleted_signals} junk signals, "
+            f"{deleted_txs_junk} junk transactions removed."
+        )
     except Exception as e:
         print(f"Cleanup error: {e}")
 
 
-# --- 3. BACKGROUND SCHEDULER ---
+# ---------------------------------------------------------------------------
+# Scheduler
+# ---------------------------------------------------------------------------
+
 async def engine_scheduler():
     while True:
         try:
-            print("Triggering Wallet Collection & Analytics...")
+            print("⚙️  Triggering collection & analytics cycle...")
             await asyncio.to_thread(run_collection)
         except Exception as e:
             print(f"Engine Error: {e}")
-        print("Cycle complete. Sleeping for 10 minutes...")
+        print("💤 Cycle complete. Sleeping 10 minutes...")
         await asyncio.sleep(600)
 
 
-# --- 4. LIFESPAN ---
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Initializing Database Tables...")
-    Base.metadata.create_all(bind=engine)
+    print("🚀 Initializing database tables...")
+    Base.metadata.create_all(bind=engine)   # creates processed_transactions too
     await asyncio.to_thread(seed_wallets_if_empty)
     await clean_orphan_transactions()
     task = asyncio.create_task(engine_scheduler())
@@ -118,8 +130,11 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-# --- 5. APP ---
-app = FastAPI(title="Smart Money API", lifespan=lifespan)
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="Smart Money API", version="1.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,23 +153,30 @@ def get_db():
         db.close()
 
 
-# --- 6. ROUTES ---
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.get("/")
 def root():
     return {
-        "message": "Smart Money API is live.",
-        "endpoints": ["/health", "/signals", "/wallets", "/top-movers", "/clusters"]
+        "message": "Smart Money API v1.1 — live.",
+        "endpoints": [
+            "/health", "/signals", "/wallets",
+            "/top-movers", "/clusters",
+            "/admin/db-status", "/admin/dedup-status",
+        ]
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "online", "engine": "running"}
+    return {"status": "online", "engine": "running", "version": "1.1.0"}
 
 
 @app.get("/signals")
 def get_signals(db: Session = Depends(get_db)):
-    return db.query(Signal).order_by(Signal.created_at.desc()).all()
+    return db.query(Signal).order_by(Signal.created_at.desc()).limit(100).all()
 
 
 @app.get("/wallets")
@@ -172,15 +194,49 @@ def get_top_movers(db: Session = Depends(get_db)):
     ).limit(10).all()
     return [{"token": r[0], "count": r[1]} for r in results]
 
+# Add these alongside your existing routes:
+@app.get("/api/health")
+def api_health():
+    return {"status": "online"}
+
+@app.get("/api/analytics/dashboard")
+def api_dashboard(db: Session = Depends(get_db)):
+    """Return aggregated dashboard stats for the frontend."""
+    from sqlalchemy import func
+    
+    total_signals = db.query(func.count(Signal.id)).scalar() or 0
+    total_wallets = db.query(func.count(Wallet.id)).scalar() or 0
+    total_tx = db.query(func.count(Transaction.id)).scalar() or 0
+    
+    latest_signals = db.query(Signal).order_by(Signal.created_at.desc()).limit(10).all()
+    
+    return {
+        "total_signals": total_signals,
+        "total_wallets": total_wallets,
+        "total_transactions": total_tx,
+        "recent_signals": [
+            {
+                "token": s.token,
+                "type": s.signal_type,
+                "score": s.conviction_score,
+                "amount_usd": s.amount_usd,
+                "chain": s.chain,
+                "time": str(s.created_at),
+            }
+            for s in latest_signals
+        ],
+        "collection_summary": "running",
+    }
 
 @app.get("/clusters")
 def get_clusters(db: Session = Depends(get_db)):
-    return db.query(Signal).filter(Signal.signal_type == 'CLUSTER').all()
+    return db.query(Signal).filter(
+        Signal.signal_type == 'CLUSTER'
+    ).order_by(Signal.created_at.desc()).limit(50).all()
 
 
 @app.get("/admin/db-status")
 def db_status(db: Session = Depends(get_db)):
-    from sqlalchemy import text
     signal_tokens = db.execute(text(
         "SELECT token, COUNT(*) as count, MIN(amount_usd) as min_usd "
         "FROM signals GROUP BY token ORDER BY count DESC LIMIT 20"
@@ -190,8 +246,45 @@ def db_status(db: Session = Depends(get_db)):
         "FROM transactions GROUP BY wallet_address ORDER BY count DESC LIMIT 10"
     )).fetchall()
     return {
-        "signal_tokens": [{"token": r[0], "count": r[1], "min_usd": r[2]} for r in signal_tokens],
-        "tx_wallets": [{"wallet": r[0][:20] + "...", "count": r[1]} for r in tx_wallets],
-        "total_signals": db.execute(text("SELECT COUNT(*) FROM signals")).scalar(),
-        "total_transactions": db.execute(text("SELECT COUNT(*) FROM transactions")).scalar(),
+        "signal_tokens": [
+            {"token": r[0], "count": r[1], "min_usd": r[2]}
+            for r in signal_tokens
+        ],
+        "tx_wallets": [
+            {"wallet": r[0][:20] + "...", "count": r[1]}
+            for r in tx_wallets
+        ],
+        "total_signals":       db.execute(text("SELECT COUNT(*) FROM signals")).scalar(),
+        "total_transactions":  db.execute(text("SELECT COUNT(*) FROM transactions")).scalar(),
+        "total_processed":     db.execute(text("SELECT COUNT(*) FROM processed_transactions")).scalar(),
+    }
+
+
+@app.get("/admin/dedup-status")
+def dedup_status(db: Session = Depends(get_db)):
+    """Shows the permanent deduplication memory status."""
+    recent = db.execute(text("""
+        SELECT token, action, chain, amount_usd, alerted, processed_at
+        FROM processed_transactions
+        ORDER BY processed_at DESC
+        LIMIT 20
+    """)).fetchall()
+    total = db.execute(text("SELECT COUNT(*) FROM processed_transactions")).scalar()
+    alerted = db.execute(text(
+        "SELECT COUNT(*) FROM processed_transactions WHERE alerted = 'YES'"
+    )).scalar()
+    return {
+        "total_processed": total,
+        "total_alerted":   alerted,
+        "recent_entries": [
+            {
+                "token":        r[0],
+                "action":       r[1],
+                "chain":        r[2],
+                "amount_usd":   r[3],
+                "alerted":      r[4],
+                "processed_at": str(r[5]),
+            }
+            for r in recent
+        ],
     }
