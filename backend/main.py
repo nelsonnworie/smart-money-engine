@@ -47,12 +47,18 @@ def seed_wallets_if_empty():
 # ---------------------------------------------------------------------------
 
 JUNK_TOKENS = [
+    # Spam / scam tokens
     'NEIRO','FLOKI','RIZO','X','WOJAK','MEME','AMP','BEAM','TURBO',
     'RSR','SPELL','UBX','TLM','VOLT','SHIB','AKITA','PEIPEI','SOMETHING',
-    'ETHF','ETHG','AF1','AFO','ETHFATHER','USDC','USDT','DAI','WBTC','WETH',
-    'USDS','FDUSD','BUSD','TUSD','FRAX','KISHU','XDOGE','XD','CHUD','BAD',
-    'DTOKEN','4CHAN','XEN','STARL','BIDEN','HQG','TRUMPTROLL','CONAN','FREE',
-    'FAERIEDRAGON','SHIB2','ELONGATE','SAFEMOON',
+    'ETHF','ETHG','AF1','AFO','ETHFATHER','BIDEN','HQG','TRUMPTROLL','CONAN',
+    'FREE','FAERIEDRAGON','SHIB2','ELONGATE','SAFEMOON','KISHU','XDOGE',
+    'XD','CHUD','BAD','DTOKEN','4CHAN','XEN','STARL',
+    # Stablecoins — never valid whale signals
+    'USDC','USDT','DAI','WBTC','WETH','USDS','FDUSD','BUSD','TUSD','FRAX',
+    # Yield-bearing stablecoin wrappers (appeared in Arbitrum alerts)
+    'SUSDAI','USDAI','SUSDE','SDAI','SUSDS','SFRXETH',
+    # Bridged / aliased stablecoins
+    'USDT0','USD0','USDBC','AXLUSDC','BRIDGEDUSDC',
 ]
 
 
@@ -88,13 +94,22 @@ async def clean_orphan_transactions():
         """, JUNK_TOKENS)
         deleted_txs_junk = cur.rowcount
 
+        # Also clear junk from processed_transactions so fingerprints
+        # from stablecoin variants don't pollute the dedup table
+        cur.execute(f"""
+            DELETE FROM processed_transactions
+            WHERE UPPER(REPLACE(token, '$', '')) IN ({placeholders})
+        """, JUNK_TOKENS)
+        deleted_processed = cur.rowcount
+
         conn.commit()
         cur.close()
         conn.close()
         print(
             f"🧹 Cleanup: {deleted_txs} orphan txs, "
             f"{deleted_signals} junk signals, "
-            f"{deleted_txs_junk} junk transactions removed."
+            f"{deleted_txs_junk} junk transactions, "
+            f"{deleted_processed} junk fingerprints removed."
         )
     except Exception as e:
         print(f"Cleanup error: {e}")
@@ -119,10 +134,53 @@ async def engine_scheduler():
 # Lifespan
 # ---------------------------------------------------------------------------
 
+def run_db_migrations():
+    """
+    Safe column-level migrations for columns added after initial deploy.
+    ADD COLUMN IF NOT EXISTS is idempotent — safe to run every startup.
+    """
+    DATABASE_URL = os.getenv("DATABASE_URL", "")
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    if not DATABASE_URL:
+        print("No DATABASE_URL — skipping migrations.")
+        return
+    try:
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+
+        migrations = [
+            # signals.tx_hash — added in v1.1, missing on pre-existing Railway DB
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS tx_hash VARCHAR",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS outcome VARCHAR DEFAULT 'PENDING'",
+            # wallets — safety checks
+            "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS win_rate FLOAT DEFAULT 0.0",
+            "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS total_signals INTEGER DEFAULT 0",
+            "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS profitable_signals INTEGER DEFAULT 0",
+            "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS outcome VARCHAR DEFAULT 'PENDING'",
+        ]
+
+        for sql in migrations:
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"Migration note ({sql[:55]}...): {e}")
+
+        cur.close()
+        conn.close()
+        print("DB migrations complete.")
+    except Exception as e:
+        print(f"Migration error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Initializing database tables...")
-    Base.metadata.create_all(bind=engine)   # creates processed_transactions too
+    print("Initializing database tables...")
+    Base.metadata.create_all(bind=engine)
+    await asyncio.to_thread(run_db_migrations)
     await asyncio.to_thread(seed_wallets_if_empty)
     await clean_orphan_transactions()
     task = asyncio.create_task(engine_scheduler())
