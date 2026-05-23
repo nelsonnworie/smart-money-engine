@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '../context/ThemeContext'
-import { walletData } from '../data/mockData'
+
+const API_BASE = 'https://smart-money-engine-production.up.railway.app'
 
 export default function SearchBar() {
   const { isDark } = useTheme()
@@ -9,8 +10,10 @@ export default function SearchBar() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState(null)
+  const [error, setError] = useState(null)
   const inputRef = useRef(null)
   const dropdownRef = useRef(null)
+  const debounceRef = useRef(null)
 
   // Keyboard shortcut
   useEffect(() => {
@@ -38,21 +41,33 @@ export default function SearchBar() {
 
   const handleSearch = (val) => {
     setQuery(val)
+    setError(null)
+
     if (val.length > 1) {
       setSearching(true)
       setShowDropdown(true)
-      setTimeout(() => {
-        setResults({
-          address: '0x7a3f...b9e2',
-          ens: 'alpha-whale.eth',
-          totalHolding: '$124.8M',
-          labels: ['Smart Whale', 'DeFi Alpha'],
-        })
-        setSearching(false)
-      }, 600)
+
+      // Debounce: clear previous timeout
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(val.trim())}`)
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const data = await res.json()
+          setResults(data)
+        } catch (err) {
+          console.error('Search failed:', err)
+          setError(err.message || 'Search failed')
+          setResults(null)
+        } finally {
+          setSearching(false)
+        }
+      }, 400) // 400ms debounce
     } else {
       setShowDropdown(false)
       setResults(null)
+      setError(null)
     }
   }
 
@@ -111,34 +126,66 @@ export default function SearchBar() {
                 <div className={`h-3 rounded w-2/3 mx-auto ${isDark ? 'bg-dark-700' : 'bg-light-200'}`}></div>
               </div>
             </div>
+          ) : error ? (
+            <div className={`p-4 text-center ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+              <p className="text-sm font-medium">Search unavailable</p>
+              <p className={`text-xs mt-1 ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+                Backend may be offline. Try again later.
+              </p>
+            </div>
           ) : results ? (
             <div className="p-3 space-y-2">
-              <div className={`flex items-center gap-3 p-2 rounded-lg ${isDark ? 'bg-dark-750/50' : 'bg-light-100'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  isDark ? 'bg-brand-500/15 text-brand-400' : 'bg-brand-100 text-brand-700'
-                }`}>W</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{results.ens || results.address}</p>
-                  <p className={`text-xs font-mono ${isDark ? 'text-dark-400' : 'text-light-500'}`}>{results.address}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold font-mono text-brand-500">{results.totalHolding}</p>
-                  <div className="flex gap-1 mt-0.5">
-                    {results.labels.slice(0, 2).map((l, i) => (
-                      <span key={i} className={`text-[9px] px-1 py-0.5 rounded-full ${
-                        isDark ? 'bg-brand-500/10 text-brand-400' : 'bg-brand-50 text-brand-600'
-                      }`}>{l}</span>
-                    ))}
+              {results.wallet ? (
+                <div className={`flex items-center gap-3 p-2 rounded-lg ${isDark ? 'bg-dark-750/50' : 'bg-light-100'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                    isDark ? 'bg-brand-500/15 text-brand-400' : 'bg-brand-100 text-brand-700'
+                  }`}>W</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {results.wallet.ens || results.wallet.address?.slice(0, 10) + '...' + results.wallet.address?.slice(-6)}
+                    </p>
+                    <p className={`text-xs font-mono ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+                      {results.wallet.address}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold font-mono text-brand-500">
+                      {results.wallet.balance || '$0'}
+                    </p>
+                    <p className={`text-[9px] ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+                      {results.wallet.txCount || 0} trades
+                    </p>
                   </div>
                 </div>
-              </div>
+              ) : results.tx ? (
+                <div className={`flex items-center gap-3 p-2 rounded-lg ${isDark ? 'bg-dark-750/50' : 'bg-light-100'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                    isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-100 text-accent-700'
+                  }`}>TX</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{results.tx.hash?.slice(0, 16)}...</p>
+                    <p className={`text-xs ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+                      {results.tx.chain} · {results.tx.type || 'transfer'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold font-mono" style={{ color: results.tx.value > 0 ? '#00d4aa' : '#ef4444' }}>
+                      {results.tx.value || '$0'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className={`p-3 text-center text-sm ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+                  No results found for "{query}"
+                </div>
+              )}
               <button
                 onClick={() => { setShowDropdown(false); setQuery('') }}
                 className={`w-full text-xs py-1.5 rounded-lg font-medium transition-colors ${
                   isDark ? 'text-brand-400 hover:bg-brand-500/8' : 'text-brand-600 hover:bg-brand-50'
                 }`}
               >
-                View full portfolio &rarr;
+                Clear search
               </button>
             </div>
           ) : null}

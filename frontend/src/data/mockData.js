@@ -1,3 +1,4 @@
+// ── KPI Data ──
 export const kpiData = {
   totalSignals: 2847,
   totalSignalsChange: 12.5,
@@ -9,6 +10,7 @@ export const kpiData = {
   highConvictionChange: -3.1,
 }
 
+// ── Signal Feed Data ──
 export const signalFeedData = [
   {
     id: 'SIG-001', type: 'Whale Accumulation', chain: 'Ethereum', token: 'LINK',
@@ -61,6 +63,7 @@ export const signalFeedData = [
   },
 ]
 
+// ── Cluster Data ──
 export const clusterData = [
   { id: 'CL-001', name: 'DeFi Alpha', wallets: 24, totalValue: '$156M',
     activeChains: ['Ethereum', 'Arbitrum', 'Base'], topTokens: ['LINK', 'AAVE', 'UNI'],
@@ -88,6 +91,7 @@ export const clusterData = [
     change24h: 8.9, volume24h: '$24.6M' },
 ]
 
+// ── Wallet Data ──
 export const walletData = {
   default: {
     address: '0x7a3f...b9e2',
@@ -115,6 +119,7 @@ export const walletData = {
   }
 }
 
+// ── Top Movers ──
 export const topMoversData = [
   { rank: 1, token: 'ARB', name: 'Arbitrum', price: '$1.60', change24h: -3.8, change7d: -12.4, volume: '$1.1B', signal: 'Distribute', conviction: 76, smartMoneyFlow: '-$5.6M', mcap: '$4.1B', walletCount: 3, walletTotal: '$1.20M' },
   { rank: 2, token: 'PENDLE', name: 'Pendle', price: '$4.82', change24h: 12.4, change7d: 28.7, volume: '$890M', signal: 'Strong Buy', conviction: 94, smartMoneyFlow: '+$18.2M', mcap: '$10.2B', walletCount: 2, walletTotal: '$480K' },
@@ -126,6 +131,7 @@ export const topMoversData = [
   { rank: 8, token: 'JUP', name: 'Jupiter', price: '$1.43', change24h: 6.7, change7d: 15.3, volume: '$890M', signal: 'Buy', conviction: 88, smartMoneyFlow: '+$22.1M', mcap: '$1.9B', walletCount: 12, walletTotal: '$22.1M' },
 ]
 
+// ── Chain Data ──
 export const chainData = [
   { name: 'Ethereum', activeClusters: 42, signals24h: 156, smartMoneyFlow: '+$184M', conviction: 87, color: '#627eea', icon: '⟠' },
   { name: 'Solana', activeClusters: 38, signals24h: 124, smartMoneyFlow: '+$96M', conviction: 91, color: '#14b8a6', icon: '◎' },
@@ -134,6 +140,7 @@ export const chainData = [
   { name: 'BNB Chain', activeClusters: 16, signals24h: 52, smartMoneyFlow: '+$15M', conviction: 71, color: '#f0b90b', icon: '⬢' },
 ]
 
+// ── Right Panel Data ──
 export const rightPanelData = {
   topMovers: [
     { rank: 1, token: 'ARB', wallets: 3, total: '$1.20M', barPercent: 100, conviction: 87, signal: 'BUY' },

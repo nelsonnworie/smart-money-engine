@@ -14,6 +14,7 @@ function AppContent() {
   const { isDark, toggleTheme } = useTheme()
   const [activeNav, setActiveNav] = useState('signals')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [timeLeft, setTimeLeft] = useState(30)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -54,10 +55,30 @@ function AppContent() {
   return (
     <div className="flex flex-col min-h-screen">
 
-      {/* ── FULL-WIDTH HEADER — spans across sidebar + content ── */}
-      <header className={`sticky top-0 z-40 flex items-center gap-4 px-6 h-14 border-b transition-colors duration-300 glass ${
+      {/* ── HEADER ── */}
+      <header className={`sticky top-0 z-40 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 h-14 border-b transition-colors duration-300 glass ${
         isDark ? 'border-dark-700/40 bg-dark-950/80' : 'border-light-200 bg-white/90'
       }`}>
+        
+        {/* Hamburger for mobile */}
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="md:hidden relative w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300 cursor-pointer"
+          aria-label="Toggle menu"
+        >
+          <div className="flex flex-col gap-1">
+            <span className={`block w-5 h-0.5 rounded transition-all duration-300 ${
+              mobileMenuOpen ? 'rotate-45 translate-y-1.5' : ''
+            } ${isDark ? 'bg-dark-300' : 'bg-light-600'}`} />
+            <span className={`block w-5 h-0.5 rounded transition-all duration-300 ${
+              mobileMenuOpen ? 'opacity-0' : ''
+            } ${isDark ? 'bg-dark-300' : 'bg-light-600'}`} />
+            <span className={`block w-5 h-0.5 rounded transition-all duration-300 ${
+              mobileMenuOpen ? '-rotate-45 -translate-y-1.5' : ''
+            } ${isDark ? 'bg-dark-300' : 'bg-light-600'}`} />
+          </div>
+        </button>
+
         <div className="flex items-center gap-3 min-w-fit">
           <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0">
             <img src="/vite.svg" alt="SME" className="w-full h-full object-cover" />
@@ -75,11 +96,11 @@ function AppContent() {
           </div>
         </div>
 
-        <div className="flex-1 flex justify-center max-w-lg mx-auto">
+        <div className="flex-1 flex justify-center max-w-lg mx-auto min-w-0">
           <SearchBar />
         </div>
 
-        <div className="flex items-center gap-3 min-w-fit">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-fit">
           <div className="hidden md:flex items-center gap-2 text-xs">
             <div className={`w-1.5 h-1.5 rounded-full ${
               isRefreshing
@@ -124,14 +145,27 @@ function AppContent() {
         </div>
       </header>
 
-      {/* ── BELOW HEADER: sidebar + content side by side ── */}
-      <div className="flex flex-1 min-h-0">
+      {/* ── BELOW HEADER ── */}
+      <div className="flex flex-1 min-h-0 relative">
 
-        {/* Sidebar - sticky below the 56px (h-14) header */}
-        <div className="sticky top-14 h-[calc(100vh-3.5rem)] flex-shrink-0">
+        {/* MOBILE OVERLAY */}
+        {mobileMenuOpen && (
+          <div
+            className="md:hidden fixed inset-0 z-30 bg-black/50"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Sidebar — hidden on mobile unless toggled */}
+        <div className={`
+          sticky top-14 h-[calc(100vh-3.5rem)] flex-shrink-0 z-40
+          transition-all duration-300
+          hidden md:block
+          ${mobileMenuOpen ? '!block fixed left-0 top-14 bottom-0 w-64 shadow-2xl' : ''}
+        `}>
           <Sidebar
             activeNav={activeNav}
-            setActiveNav={setActiveNav}
+            setActiveNav={(nav) => { setActiveNav(nav); setMobileMenuOpen(false); }}
             collapsed={sidebarCollapsed}
             setCollapsed={setSidebarCollapsed}
             chainData={chainData}
@@ -139,20 +173,19 @@ function AppContent() {
           />
         </div>
 
-        {/* Main content + footer — scrolls independently */}
+        {/* Main content + footer */}
         <div className="flex flex-col flex-1 min-w-0 overflow-y-auto">
 
           {/* KPI cards */}
-          <div className="px-6 pt-5 pb-3">
+          <div className="px-3 sm:px-6 pt-4 sm:pt-5 pb-2 sm:pb-3">
             <KPICards data={kpiData} />
           </div>
 
           {/* Page content */}
-          <div className="px-6 pb-6 flex-1">
+          <div className="px-3 sm:px-6 pb-6 flex-1">
             {renderPage()}
           </div>
 
-          {/* Footer - naturally at the bottom */}
           <Footer />
 
         </div>

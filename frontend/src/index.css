@@ -200,3 +200,89 @@ body.light {
   background-clip: text;
 }
 
+/* ======================================================== */
+/*              MOBILE RESPONSIVE FIXES                     */
+/* ======================================================== */
+
+@media (max-width: 768px) {
+
+  /* ── Sidebar: overlay on mobile ─── */
+  body .sticky.top-14.h-\[calc\(100vh-3\.5rem\)\] {
+    position: fixed !important;
+    left: -100% !important;
+    top: 56px !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    z-index: 50 !important;
+    transition: left 0.3s ease !important;
+  }
+
+  /* KPI cards: 2 columns on small screens */
+  .grid-cols-2 {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Signal feed cards: stack vertically */
+  .card-premium .flex.items-center.gap-3 {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  /* Signal feed: full width details */
+  .card-premium .flex-shrink-0[style*="width: 180px"] {
+    width: 100% !important;
+  }
+
+  /* Hide sparkline on mobile */
+  .card-premium .flex-1.flex.items-center.justify-center.px-4 {
+    display: none !important;
+  }
+
+  /* Conviction badge: smaller */
+  .card-premium .min-w-\[56px\] {
+    min-width: auto !important;
+  }
+  .card-premium .min-w-\[56px\] .text-lg {
+    font-size: 14px !important;
+  }
+  .card-premium .min-w-\[56px\] .w-12 {
+    width: 40px !important;
+  }
+
+  /* Footer: stack sections */
+  footer .grid-cols-1.md\:grid-cols-4 {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+
+  /* Footer stats: center */
+  footer .flex.items-center.gap-4 {
+    flex-wrap: wrap !important;
+  }
+
+  /* Header: reduce padding */
+  header .sm\:px-6 {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Main content padding */
+  .px-3.sm\:px-6 {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* Chain nav items: compact */
+  .w-full.flex.items-center.gap-3.px-6 {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* KPI card padding */
+  .p-3\.5 {
+    padding: 10px !important;
+  }
+}
+
