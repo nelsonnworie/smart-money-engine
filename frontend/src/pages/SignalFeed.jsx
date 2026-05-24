@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { signalFeedData } from '../data/mockData'
+
+const API_BASE = 'https://smart-money-engine-production.up.railway.app'
 
 const typeColors = {
   'Whale Accumulation': { bg: 'rgba(0,212,170,0.15)', text: '#00d4aa', label: 'Accumulation' },
@@ -17,28 +20,23 @@ const chainColors = {
   Base: '#0052ff',
   Polygon: '#8247e5',
   Optimism: '#ff0420',
-}
-
-// Map signal type to actual trend direction
-const typeTrends = {
-  'Whale Accumulation': 'up',
-  'New Position': 'up',
-  'Liquidity Add': 'up',
-  'Bridge Activity': 'up',
-  'DEX Dumping': 'down',
-  'Cluster Movement': 'down',
+  ethereum: '#627eea',
+  solana: '#14b8a6',
+  arbitrum: '#2d374b',
+  base: '#0052ff',
+  bnb: '#f0b90b',
 }
 
 function getTrend(signal) {
-  return typeTrends[signal.type] || 'neutral'
+  if (signal.signal_type === 'BUY') return 'up'
+  if (signal.signal_type === 'SELL') return 'down'
+  return 'neutral'
 }
 
-// Generate sparkline data matching the actual signal trend
 function getSparklineData(signal) {
   const trend = getTrend(signal)
   const points = 12
   const data = []
-  
   let val = 30 + Math.random() * 40
   for (let i = 0; i < points; i++) {
     if (trend === 'up') {
@@ -51,19 +49,15 @@ function getSparklineData(signal) {
     val = Math.max(5, Math.min(95, val))
     data.push(Math.round(val * 10) / 10)
   }
-  
   return data
 }
 
-// Pure line chart — no dots, no fill, no tails
 function Sparkline({ data, color, width = 120, height = 24 }) {
   if (!data || data.length < 2) return null
-  
   const min = Math.min(...data)
   const max = Math.max(...data)
   const range = max - min || 1
   const stepX = width / (data.length - 1)
-  
   const path = data.map((v, i) => {
     const x = i * stepX
     const y = height - ((v - min) / range) * height
@@ -77,13 +71,83 @@ function Sparkline({ data, color, width = 120, height = 24 }) {
   )
 }
 
+function formatUsd(amount) {
+  if (!amount) return '$0'
+  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`
+  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`
+  return `$${amount.toFixed(0)}`
+}
+
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins} min ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours} hour ago`
+  return date.toLocaleDateString()
+}
+
 export default function SignalFeed() {
   const { isDark } = useTheme()
+  const [liveSignals, setLiveSignals] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [useMock, setUseMock] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchSignals() {
+      try {
+        const res = await fetch(`${API_BASE}/signals`)
+        if (!res.ok) throw new Error('API error')
+        const data = await res.json()
+        if (!cancelled && data && data.length > 0) {
+          setLiveSignals(data.slice(0, 20))
+          setUseMock(false)
+        } else {
+          if (!cancelled) setUseMock(true)
+        }
+      } catch (e) {
+        console.warn('Failed to fetch live signals, using mock:', e)
+        if (!cancelled) setUseMock(true)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchSignals()
+    return () => { cancelled = true }
+  }, [])
+
+  const signals = useMock ? signalFeedData : liveSignals
 
   const getConvictionColor = (score) => {
     if (score >= 90) return isDark ? '#00d4aa' : '#059669'
     if (score >= 75) return '#f59e0b'
     return '#ef4444'
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className={`flex items-center justify-between ${isDark ? 'text-dark-300' : 'text-light-700'}`}>
+          <h2 className="text-sm font-bold">Live Signal Feed</h2>
+        </div>
+        {[1, 2, 3].map(i => (
+          <div key={i} className={`animate-pulse rounded-xl p-3.5 ${isDark ? 'bg-dark-800/50' : 'bg-light-100/50'}`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-lg ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+              <div className="flex-1 space-y-2">
+                <div className={`h-3 rounded w-1/3 ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+                <div className={`h-3 rounded w-2/3 ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   return (
@@ -92,78 +156,83 @@ export default function SignalFeed() {
         <h2 className="text-sm font-bold">Live Signal Feed</h2>
         <div className="flex items-center gap-1.5 text-[10px] font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse-glow"></span>
-          <span className={isDark ? 'text-dark-400' : 'text-light-500'}>Real-time</span>
+          <span className={isDark ? 'text-dark-400' : 'text-light-500'}>
+            {useMock ? 'Demo' : 'Real-time'}
+          </span>
         </div>
       </div>
 
       <div className="space-y-2.5">
-        {signalFeedData.map((signal, idx) => {
-          const tc = typeColors[signal.type] || typeColors['Whale Accumulation']
-          const convColor = getConvictionColor(signal.conviction)
+        {signals.map((signal, idx) => {
+          // Handle both mock format and API format
+          const type = signal.type || (signal.signal_type === 'BUY' ? 'Whale Accumulation' : signal.signal_type === 'SELL' ? 'DEX Dumping' : signal.signal_type)
+          const tc = typeColors[type] || typeColors['Whale Accumulation']
+          const convScore = signal.conviction || signal.conviction_score || 70
+          const convColor = getConvictionColor(convScore)
           const sparkData = getSparklineData(signal)
           const trend = getTrend(signal)
           const sparkColor = trend === 'up' ? (isDark ? '#00d4aa' : '#059669') : (isDark ? '#ef4444' : '#dc2626')
+          const chain = signal.chain || 'ethereum'
+          const token = signal.token || 'Unknown'
+          const amount = signal.amount_usd || 0
+          const desc = signal.description || `${signal.signal_type || type} ${token}`
+          const label = signal.label || signal.wallet?.slice(0, 10) || ''
 
           return (
-            <div key={signal.id} className={`card-premium rounded-xl p-3.5 animate-slide-up stagger-${Math.min(idx + 1, 10)}`}>
+            <div key={signal.id || idx} className={`card-premium rounded-xl p-3.5 animate-slide-up stagger-${Math.min(idx + 1, 10)}`}>
               <div className="flex items-center gap-3">
-                {/* Icon */}
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
                   style={{ backgroundColor: tc.bg, color: tc.text }}>
-                  {signal.type.charAt(0)}
+                  {(signal.type || signal.signal_type || '?').charAt(0)}
                 </div>
 
-                {/* Details */}
                 <div className="flex-shrink-0" style={{ width: '180px' }}>
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="text-xs font-medium" style={{ color: tc.text }}>
-                      {tc.label}
+                      {tc.label || signal.signal_type}
                     </span>
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-mono ${
-                      isDark ? 'bg-dark-700 text-dark-400' : 'bg-light-100 text-light-500'
-                    }`}>
-                      {signal.id}
-                    </span>
-                    <span className="text-[8px] font-mono" style={{ color: chainColors[signal.chain] || '#94a3b8' }}>
-                      {signal.chain}
-                    </span>
-                    {signal.label && (
+                    {signal.id && (
                       <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-mono ${
-                        isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
+                        isDark ? 'bg-dark-700 text-dark-400' : 'bg-light-100 text-light-500'
                       }`}>
-                        {signal.label}
+                        {typeof signal.id === 'number' ? `#${signal.id}` : signal.id}
                       </span>
                     )}
+                    <span className="text-[8px] font-mono" style={{ color: chainColors[chain] || '#94a3b8' }}>
+                      {chain.charAt(0).toUpperCase() + chain.slice(1)}
+                    </span>
                   </div>
 
-                  <h3 className="text-base font-bold leading-tight">{signal.token}</h3>
+                  <h3 className="text-base font-bold leading-tight">
+                    {token.startsWith('$') ? token : `$${token}`}
+                  </h3>
                   <p className={`text-[10px] mt-0.5 leading-tight truncate ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
-                    {signal.description}
+                    {desc}
                   </p>
                   <div className="flex items-center gap-2 text-[9px] font-mono mt-0.5">
                     <span className={isDark ? 'text-dark-400' : 'text-light-500'}>
-                      {signal.usdValue}
+                      {formatUsd(amount)}
                     </span>
-                    <span className={isDark ? 'text-dark-500' : 'text-light-400'}>{signal.timestamp}</span>
+                    <span className={isDark ? 'text-dark-500' : 'text-light-400'}>
+                      {formatTime(signal.created_at)}
+                    </span>
                   </div>
                 </div>
 
-                {/* Sparkline — fills the middle */}
                 <div className="flex-1 flex items-center justify-center px-4">
                   <div className="w-full max-w-[160px]">
                     <Sparkline data={sparkData} color={sparkColor} width={140} height={24} />
                   </div>
                 </div>
 
-                {/* Conviction */}
                 <div className="flex flex-col items-center justify-center flex-shrink-0 min-w-[56px]">
                   <div className="text-lg font-bold font-mono leading-none mb-1" style={{ color: convColor }}>
-                    {signal.conviction}%
+                    {convScore}%
                   </div>
                   <div className={`w-12 h-1 rounded-full overflow-hidden ${isDark ? 'bg-dark-700' : 'bg-light-200'}`}>
                     <div className="h-full rounded-full animate-progress"
-                      style={{ width: `${signal.conviction}%`, backgroundColor: convColor }}
-                    ></div>
+                      style={{ width: `${convScore}%`, backgroundColor: convColor }}
+                    />
                   </div>
                 </div>
               </div>

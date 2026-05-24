@@ -25,13 +25,13 @@ function GithubIcon() {
 }
 
 function renderLinkIcon(icon) {
-  if (icon === 'tg') { return <TelegramIcon /> }
-  if (icon === 'x') { return <XIcon /> }
-  if (icon === 'gh') { return <GithubIcon /> }
+  if (icon === 'tg') return <TelegramIcon />
+  if (icon === 'x') return <XIcon />
+  if (icon === 'gh') return <GithubIcon />
   return null
 }
 
-var sections = [
+const sections = [
   {
     title: 'Product',
     links: [
@@ -61,30 +61,28 @@ var sections = [
   },
 ]
 
-var footerStats = [
+const footerStats = [
   { label: 'Chains', value: '14+' },
   { label: 'Signals', value: '2.8K' },
   { label: 'Wallets', value: '50K+' },
 ]
 
-var topGlow = { background: 'linear-gradient(90deg, transparent, rgba(0,212,170,0.3), transparent)' }
-var radialGlow = { background: 'radial-gradient(ellipse at top, rgba(0,212,170,0.04) 0%, transparent 70%)' }
-var logoBox = { background: 'linear-gradient(135deg, rgba(0,212,170,0.2), rgba(0,212,170,0.05))', border: '1px solid rgba(0,212,170,0.2)' }
-
-var socialBtnDark = 'w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 bg-dark-800 text-dark-400 hover:bg-dark-700 hover:text-brand-400 border border-dark-700/50'
-var socialBtnLight = 'w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 bg-light-100 text-light-500 hover:bg-light-200 hover:text-brand-600 border border-light-200'
+const topGlow = { background: 'linear-gradient(90deg, transparent, rgba(0,212,170,0.3), transparent)' }
+const radialGlow = { background: 'radial-gradient(ellipse at top, rgba(0,212,170,0.04) 0%, transparent 70%)' }
+const logoBox = { background: 'linear-gradient(135deg, rgba(0,212,170,0.2), rgba(0,212,170,0.05))', border: '1px solid rgba(0,212,170,0.2)' }
 
 export default function Footer() {
-  var theme = useTheme()
-  var isDark = theme.isDark
+  const { isDark } = useTheme()
 
-  var footerClass = 'relative border-t flex-shrink-0 transition-colors duration-300 w-full ' + (isDark ? 'border-dark-700/30 bg-dark-900/95' : 'border-light-200 bg-white/95')
-  var descClass = isDark ? 'text-xs leading-relaxed text-dark-300' : 'text-xs leading-relaxed text-light-600'
-  var statValClass = isDark ? 'text-sm font-bold font-mono text-dark-100' : 'text-sm font-bold font-mono text-light-800'
-  var statLblClass = isDark ? 'text-[9px] uppercase tracking-wide text-dark-400' : 'text-[9px] uppercase tracking-wide text-light-400'
-  var bottomClass = isDark ? 'pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 border-dark-700/30' : 'pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 border-light-200'
-  var copyClass = isDark ? 'text-[11px] font-mono text-dark-400' : 'text-[11px] font-mono text-light-400'
-  var socialBtnClass = isDark ? socialBtnDark : socialBtnLight
+  const footerClass = `relative border-t flex-shrink-0 transition-colors duration-300 w-full ${
+    isDark ? 'border-dark-700/30 bg-dark-900/95' : 'border-light-200 bg-white/95'
+  }`
+  const statValClass = isDark ? 'text-sm font-bold font-mono text-dark-100' : 'text-sm font-bold font-mono text-light-800'
+  const statLblClass = isDark ? 'text-[9px] uppercase tracking-wide text-dark-400' : 'text-[9px] uppercase tracking-wide text-light-400'
+  const bottomClass = isDark
+    ? 'pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 border-dark-700/30'
+    : 'pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 border-light-200'
+  const copyClass = isDark ? 'text-[11px] font-mono text-dark-400' : 'text-[11px] font-mono text-light-400'
 
   return (
     <footer className={footerClass}>
@@ -94,6 +92,7 @@ export default function Footer() {
       <div className="w-full px-8 pt-12 pb-8">
         <div className="max-w-screen-2xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-x-12 gap-y-10 mb-10">
+            {/* Column 1: Logo + Stats + Description */}
             <div className="space-y-5">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={logoBox}>
@@ -107,43 +106,39 @@ export default function Footer() {
                 </div>
               </div>
 
-              <p className={descClass}>
-                Real-time on-chain intelligence for smart money movements across chains.
+              <p className={`text-xs leading-relaxed ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+                Cross-Chain Signal Platform
               </p>
 
               <div className="flex items-center gap-4">
-                {footerStats.map(function(stat) {
-                  return (
-                    <div key={stat.label}>
-                      <p className={statValClass}>{stat.value}</p>
-                      <p className={statLblClass}>{stat.label}</p>
-                    </div>
-                  )
-                })}
+                {footerStats.map(stat => (
+                  <div key={stat.label}>
+                    <p className={statValClass}>{stat.value}</p>
+                    <p className={statLblClass}>{stat.label}</p>
+                  </div>
+                ))}
               </div>
-
             </div>
 
-            {sections.map(function(section) {
-              var headClass = isDark
+            {/* Columns 2-3: Product, Community */}
+            {sections.slice(0, 2).map(section => {
+              const headClass = isDark
                 ? 'text-[10px] font-bold uppercase tracking-widest mb-5 text-dark-200'
                 : 'text-[10px] font-bold uppercase tracking-widest mb-5 text-light-700'
               return (
                 <div key={section.title}>
                   <h4 className={headClass}>{section.title}</h4>
                   <ul className="space-y-3">
-                    {section.links.map(function(link) {
-                      var linkIcon = link.icon ? renderLinkIcon(link.icon) : null
-                      var linkClass = isDark
+                    {section.links.map(link => {
+                      const linkIcon = link.icon ? renderLinkIcon(link.icon) : null
+                      const linkClass = isDark
                         ? 'inline-flex items-center gap-2 text-sm transition-all duration-150 group text-dark-300 hover:text-brand-400'
                         : 'inline-flex items-center gap-2 text-sm transition-all duration-150 group text-light-500 hover:text-brand-600'
                       return (
                         <li key={link.label}>
                           <a href={link.href} className={linkClass}>
                             {linkIcon && (
-                              <span className="opacity-60 group-hover:opacity-100 transition-opacity">
-                                {linkIcon}
-                              </span>
+                              <span className="opacity-60 group-hover:opacity-100 transition-opacity">{linkIcon}</span>
                             )}
                             <span>{link.label}</span>
                           </a>
@@ -154,11 +149,32 @@ export default function Footer() {
                 </div>
               )
             })}
+
+            {/* Column 4: Legal */}
+            <div>
+              <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-5 ${
+                isDark ? 'text-dark-200' : 'text-light-700'
+              }`}>Legal</h4>
+              <ul className="space-y-3">
+                {sections[2].links.map(link => {
+                  const linkClass = isDark
+                    ? 'inline-flex items-center gap-2 text-sm transition-all duration-150 group text-dark-300 hover:text-brand-400'
+                    : 'inline-flex items-center gap-2 text-sm transition-all duration-150 group text-light-500 hover:text-brand-600'
+                  return (
+                    <li key={link.label}>
+                      <a href={link.href} className={linkClass}>
+                        <span>{link.label}</span>
+                      </a>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           </div>
 
           <div className={bottomClass}>
             <p className={copyClass}>
-              {String.fromCharCode(169)} 2026 Smart Money Engine. All rights reserved.
+              &copy; 2026 Smart Money Engine. All rights reserved.
             </p>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse-glow" />
