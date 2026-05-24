@@ -298,22 +298,33 @@ def search_wallet(q: str = "", db: Session = Depends(get_db)):
     if not q:
         return {"error": "No query provided"}
     
-    # Find wallet info from wallets table
-    wallet = db.query(Wallet).filter(
-        Wallet.address.ilike(f"%{q}%")
-    ).first()
+    wallet = None
+    signals = []
+    txns = []
+    error_detail = None
     
-    # Find signals involving this wallet address
-    signals = db.query(Signal).filter(
-        Signal.wallets_involved.ilike(f"%{q}%")
-    ).order_by(Signal.created_at.desc()).limit(50).all()
+    # Each query wrapped individually so one failure doesn't crash the endpoint
+    try:
+        wallet = db.query(Wallet).filter(
+            Wallet.address.ilike(f"%{q}%")
+        ).first()
+    except Exception as e:
+        error_detail = f"Wallet query: {e}"
     
-    # Find transactions involving this wallet
-    txns = db.query(Transaction).filter(
-        Transaction.wallet_address.ilike(f"%{q}%")
-    ).order_by(Transaction.created_at.desc()).limit(50).all()
+    try:
+        signals = db.query(Signal).filter(
+            Signal.wallets_involved.ilike(f"%{q}%")
+        ).order_by(Signal.created_at.desc()).limit(50).all()
+    except Exception as e:
+        error_detail = f"Signal query: {e}"
     
-    # Compute wallet stats from signals
+    try:
+        txns = db.query(Transaction).filter(
+            Transaction.wallet_address.ilike(f"%{q}%")
+        ).order_by(Transaction.timestamp.desc()).limit(50).all()
+    except Exception as e:
+        error_detail = f"Transaction query: {e}"
+    
     total_signals = len(signals)
     total_volume = sum(s.amount_usd or 0 for s in signals)
     buy_count = sum(1 for s in signals if s.signal_type == 'BUY')
@@ -328,15 +339,17 @@ def search_wallet(q: str = "", db: Session = Depends(get_db)):
             "total_volume": total_volume,
             "buys": buy_count,
             "sells": sell_count,
-        } if wallet or signals else None,
+        } if wallet or total_signals > 0 else None,
         "signals": [
             {
                 "id": s.id,
                 "token": s.token,
                 "type": s.signal_type,
+                "signal_type": s.signal_type,
                 "amount_usd": s.amount_usd,
                 "chain": s.chain,
                 "conviction": s.conviction_score,
+                "conviction_score": s.conviction_score,
                 "time": str(s.created_at),
                 "tx_hash": s.tx_hash,
             }
@@ -349,10 +362,11 @@ def search_wallet(q: str = "", db: Session = Depends(get_db)):
                 "value": t.amount_usd,
                 "chain": t.chain,
                 "action": t.action,
-                "time": str(t.created_at),
+                "time": str(t.timestamp),
             }
             for t in txns
         ],
+        "_debug_error": error_detail,
     }
 
 @app.get("/admin/db-status")
