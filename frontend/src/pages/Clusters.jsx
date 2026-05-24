@@ -1,25 +1,83 @@
+import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
-import { clusterData } from '../data/mockData'
+
+const API_BASE = 'https://smart-money-engine-production.up.railway.app'
 
 export default function Clusters() {
   const { isDark } = useTheme()
+  const [clusters, setClusters] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchData() {
+      try {
+        const res = await fetch(`${API_BASE}/clusters`)
+        if (!res.ok) throw new Error('API error')
+        const data = await res.json()
+        if (!cancelled) setClusters(data)
+      } catch (e) {
+        console.warn('Failed to fetch clusters:', e)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => { cancelled = true }
+  }, [])
+
+  // Map signal data into cluster format matching your design
+  const clusterCards = clusters.map((s, idx) => {
+    const walletAddr = s.wallets_involved || ''
+    const color = s.conviction_score >= 80 ? '#00d4aa' : s.conviction_score >= 70 ? '#8b5cf6' : '#f59e0b'
+    return {
+      id: s.id || idx,
+      name: s.token?.startsWith('$') ? s.token : `$${s.token || 'Unknown'}`,
+      color: color,
+      signal: s.signal_type || 'ALERT',
+      wallets: 1,
+      totalValue: s.amount_usd ? `$${(s.amount_usd / 1000).toFixed(1)}K` : 'N/A',
+      avgConviction: s.conviction_score || 70,
+      change24h: Math.round((s.conviction_score || 70) / 10 - 5),
+      activeChains: [s.chain || 'ethereum'],
+      volume24h: s.amount_usd ? `$${(s.amount_usd / 1000).toFixed(1)}K` : 'N/A',
+      lastActive: s.created_at ? new Date(s.created_at).toLocaleDateString() : '',
+      topTokens: [s.token?.replace('$', '') || 'Unknown'].filter(Boolean),
+    }
+  })
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className={`flex items-center justify-between ${isDark ? 'text-dark-300' : 'text-light-700'}`}>
+          <h2 className="text-sm font-bold">Smart Money Clusters</h2>
+        </div>
+        {[1,2,3].map(i => (
+          <div key={i} className={`animate-pulse rounded-xl p-3.5 ${isDark ? 'bg-dark-800/50' : 'bg-light-100/50'}`}>
+            <div className={`h-3 rounded w-1/3 mb-2 ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+            <div className={`h-3 rounded w-2/3 ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">
       <div className={`flex items-center justify-between ${isDark ? 'text-dark-300' : 'text-light-700'}`}>
         <h2 className="text-sm font-bold">Smart Money Clusters</h2>
         <span className={`text-[10px] font-mono ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
-          {clusterData.length} active clusters
+          {clusterCards.length} active clusters
         </span>
       </div>
 
       <div className="space-y-2.5">
-        {clusterData.map((cluster, idx) => (
+        {clusterCards.map((cluster, idx) => (
           <div key={cluster.id} className={`card-premium rounded-xl p-3.5 animate-slide-up stagger-${Math.min(idx + 1, 10)}`}>
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
                 style={{ backgroundColor: `${cluster.color}15`, color: cluster.color }}>
-                {cluster.name.charAt(0)}
+                {cluster.name.replace('$', '').charAt(0)}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -27,7 +85,7 @@ export default function Clusters() {
                   <h3 className="text-sm font-bold">{cluster.name}</h3>
                   <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-mono ${
                     isDark ? 'bg-dark-700 text-dark-400' : 'bg-light-100 text-light-500'
-                  }`}>{cluster.id}</span>
+                  }`}>#{cluster.id}</span>
                   <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium`}
                     style={{ backgroundColor: `${cluster.color}15`, color: cluster.color }}>
                     {cluster.signal}

@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 
-function TopMoversWidget({ data }) {
-  const { isDark } = useTheme()
+const API_BASE = 'https://smart-money-engine-production.up.railway.app'
+
+function TopMoversWidget({ data, isDark }) {
   return (
     <div className="card-premium rounded-xl p-4 animate-slide-up stagger-3">
       <div className="flex items-center justify-between mb-3">
@@ -13,7 +15,7 @@ function TopMoversWidget({ data }) {
         </span>
       </div>
       <div className="space-y-2.5">
-        {data.topMovers.map((item, idx) => (
+        {data.map((item, idx) => (
           <div key={item.token} className="animate-slide-up" style={{ animationDelay: `${idx * 50 + 50}ms` }}>
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
@@ -59,8 +61,7 @@ function TopMoversWidget({ data }) {
   )
 }
 
-function TelegramBotWidget({ data }) {
-  const { isDark } = useTheme()
+function TelegramBotWidget({ data, isDark }) {
   return (
     <div className="card-premium rounded-xl p-4 animate-slide-up stagger-4">
       <div className="flex items-center justify-between mb-3">
@@ -79,7 +80,7 @@ function TelegramBotWidget({ data }) {
       </div>
 
       <p className={`text-[10px] font-mono mb-3 ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
-        {data.telegramBot.username}
+        {data.username}
       </p>
 
       {/* Chat simulation */}
@@ -101,40 +102,118 @@ function TelegramBotWidget({ data }) {
       </div>
 
       {/* Cluster signal example */}
-      <div className={`mt-3 rounded-lg p-3 animate-slide-up stagger-5 ${isDark ? 'bg-dark-750/50 border border-dark-600/20' : 'bg-light-50 border border-light-200'}`}>
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
-              data.telegramBot.recentSignals[0].action === 'BUY'
-                ? 'bg-green-500/15 text-green-400'
-                : 'bg-red-500/15 text-red-400'
-            }`}>{data.telegramBot.recentSignals[0].action}</span>
-            <span className="text-sm font-bold">${data.telegramBot.recentSignals[0].token}</span>
-            {data.telegramBot.recentSignals[0].cluster && (
-              <span className={`text-[9px] px-1 py-0.5 rounded-full ${
-                isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
-              }`}>CLUSTER</span>
-            )}
+      {data.recentSignals && data.recentSignals.length > 0 && (
+        <div className={`mt-3 rounded-lg p-3 animate-slide-up stagger-5 ${isDark ? 'bg-dark-750/50 border border-dark-600/20' : 'bg-light-50 border border-light-200'}`}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                data.recentSignals[0].action === 'BUY'
+                  ? 'bg-green-500/15 text-green-400'
+                  : 'bg-red-500/15 text-red-400'
+              }`}>{data.recentSignals[0].action}</span>
+              <span className="text-sm font-bold">${data.recentSignals[0].token}</span>
+              {data.recentSignals[0].cluster && (
+                <span className={`text-[9px] px-1 py-0.5 rounded-full ${
+                  isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
+                }`}>CLUSTER</span>
+              )}
+            </div>
+            <span className={`text-xs font-mono font-bold ${
+              data.recentSignals[0].conviction >= 80
+                ? isDark ? 'text-brand-400' : 'text-brand-600'
+                : isDark ? 'text-dark-400' : 'text-light-500'
+            }`}>{data.recentSignals[0].conviction}%</span>
           </div>
-          <span className={`text-xs font-mono font-bold ${
-            data.telegramBot.recentSignals[0].conviction >= 80
-              ? isDark ? 'text-brand-400' : 'text-brand-600'
-              : isDark ? 'text-dark-400' : 'text-light-500'
-          }`}>{data.telegramBot.recentSignals[0].conviction}%</span>
+          <p className={`text-[10px] ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
+            {data.recentSignals[0].wallets} wallets · {data.recentSignals[0].total} · {data.recentSignals[0].chain}
+          </p>
         </div>
-        <p className={`text-[10px] ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
-          {data.telegramBot.recentSignals[0].wallets} wallets · {data.telegramBot.recentSignals[0].total} · {data.telegramBot.recentSignals[0].chain}
-        </p>
-      </div>
+      )}
     </div>
   )
 }
 
 export default function RightPanel({ data }) {
+  const { isDark } = useTheme()
+  const [liveMovers, setLiveMovers] = useState([])
+  const [moversLoading, setMoversLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchMovers() {
+      try {
+        const res = await fetch(`${API_BASE}/signals`)
+        if (!res.ok) throw new Error('API error')
+        const signals = await res.json()
+        if (!cancelled && signals && signals.length > 0) {
+          // Aggregate by token
+          const tokenMap = {}
+          signals.forEach(s => {
+            const key = (s.token || 'UNKNOWN').replace('$', '')
+            if (!tokenMap[key]) {
+              tokenMap[key] = { token: key, buys: 0, sells: 0, volume: 0, count: 0, totalConviction: 0 }
+            }
+            tokenMap[key].count++
+            tokenMap[key].volume += s.amount_usd || 0
+            tokenMap[key].totalConviction += s.conviction_score || 0
+            if (s.signal_type === 'BUY') tokenMap[key].buys++
+            if (s.signal_type === 'SELL') tokenMap[key].sells++
+          })
+
+          const sorted = Object.values(tokenMap)
+            .sort((a, b) => b.volume - a.volume)
+            .slice(0, 5)
+            .map((t, i) => {
+              const maxVolume = Object.values(tokenMap).reduce((m, v) => Math.max(m, v.volume), 0)
+              const signal = t.buys > t.sells ? 'BUY' : 'SELL'
+              const conviction = Math.round(t.totalConviction / t.count)
+              return {
+                rank: i + 1,
+                token: t.token,
+                signal,
+                wallets: t.count,
+                total: t.volume >= 1000000 ? `$${(t.volume / 1000000).toFixed(1)}M` : `$${(t.volume / 1000).toFixed(1)}K`,
+                barPercent: (t.volume / maxVolume) * 100,
+                conviction,
+              }
+            })
+
+          if (!cancelled) setLiveMovers(sorted)
+        }
+      } catch (e) {
+        console.warn('Failed to fetch right panel movers:', e)
+      } finally {
+        if (!cancelled) setMoversLoading(false)
+      }
+    }
+    fetchMovers()
+    return () => { cancelled = true }
+  }, [])
+
+  // Use live data if fetched, otherwise fall back to mock data
+  const topMovers = liveMovers.length > 0 ? liveMovers : (data?.topMovers || [])
+  const telegramData = {
+    username: data?.telegramBot?.username || '@SmartMoneySignalBot',
+    recentSignals: data?.telegramBot?.recentSignals || [],
+  }
+
+  if (moversLoading && liveMovers.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className={`animate-pulse rounded-xl p-4 ${isDark ? 'bg-dark-800/50' : 'bg-light-100/50'}`}>
+          <div className={`h-3 rounded w-1/2 mb-3 ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className={`h-8 rounded mb-2 ${isDark ? 'bg-dark-700' : 'bg-light-200'}`} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <TopMoversWidget data={data} />
-      <TelegramBotWidget data={data} />
+      <TopMoversWidget data={topMovers} isDark={isDark} />
+      <TelegramBotWidget data={telegramData} isDark={isDark} />
     </div>
   )
 }

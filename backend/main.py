@@ -298,34 +298,62 @@ def search_wallet(q: str = "", db: Session = Depends(get_db)):
     if not q:
         return {"error": "No query provided"}
     
-    # Try to find a wallet by address (partial match)
+    # Find wallet info from wallets table
     wallet = db.query(Wallet).filter(
         Wallet.address.ilike(f"%{q}%")
     ).first()
     
-    if wallet:
-        return {"wallet": {
-            "address": wallet.address,
-            "label": wallet.label,
-            "chain": wallet.chain,
-        }}
+    # Find signals involving this wallet address
+    signals = db.query(Signal).filter(
+        Signal.wallets_involved.ilike(f"%{q}%")
+    ).order_by(Signal.created_at.desc()).limit(50).all()
     
-    # Try to find a transaction by hash
-    tx = db.query(Transaction).filter(
-        Transaction.tx_hash.ilike(f"%{q}%")
-    ).first()
+    # Find transactions involving this wallet
+    txns = db.query(Transaction).filter(
+        Transaction.wallet_address.ilike(f"%{q}%")
+    ).order_by(Transaction.created_at.desc()).limit(50).all()
     
-    if tx:
-        return {"tx": {
-            "hash": tx.tx_hash,
-            "token": tx.token,
-            "value": tx.amount_usd,
-            "chain": tx.chain,
-            "type": tx.action,
-        }}
+    # Compute wallet stats from signals
+    total_signals = len(signals)
+    total_volume = sum(s.amount_usd or 0 for s in signals)
+    buy_count = sum(1 for s in signals if s.signal_type == 'BUY')
+    sell_count = sum(1 for s in signals if s.signal_type == 'SELL')
     
-    return {"error": "No results found"}
-
+    return {
+        "wallet": {
+            "address": q,
+            "label": wallet.label if wallet else "",
+            "chain": wallet.chain if wallet else "",
+            "total_signals": total_signals,
+            "total_volume": total_volume,
+            "buys": buy_count,
+            "sells": sell_count,
+        } if wallet or signals else None,
+        "signals": [
+            {
+                "id": s.id,
+                "token": s.token,
+                "type": s.signal_type,
+                "amount_usd": s.amount_usd,
+                "chain": s.chain,
+                "conviction": s.conviction_score,
+                "time": str(s.created_at),
+                "tx_hash": s.tx_hash,
+            }
+            for s in signals
+        ],
+        "transactions": [
+            {
+                "hash": t.tx_hash,
+                "token": t.token,
+                "value": t.amount_usd,
+                "chain": t.chain,
+                "action": t.action,
+                "time": str(t.created_at),
+            }
+            for t in txns
+        ],
+    }
 
 @app.get("/admin/db-status")
 def db_status(db: Session = Depends(get_db)):
