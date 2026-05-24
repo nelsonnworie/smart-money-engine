@@ -292,6 +292,40 @@ def get_clusters(db: Session = Depends(get_db)):
         Signal.signal_type == 'CLUSTER'
     ).order_by(Signal.created_at.desc()).limit(50).all()
 
+@app.get("/api/search")
+def search_wallet(q: str = "", db: Session = Depends(get_db)):
+    """Search wallets, transactions, or signals by query string."""
+    if not q:
+        return {"error": "No query provided"}
+    
+    # Try to find a wallet by address (partial match)
+    wallet = db.query(Wallet).filter(
+        Wallet.address.ilike(f"%{q}%")
+    ).first()
+    
+    if wallet:
+        return {"wallet": {
+            "address": wallet.address,
+            "label": wallet.label,
+            "chain": wallet.chain,
+        }}
+    
+    # Try to find a transaction by hash
+    tx = db.query(Transaction).filter(
+        Transaction.tx_hash.ilike(f"%{q}%")
+    ).first()
+    
+    if tx:
+        return {"tx": {
+            "hash": tx.tx_hash,
+            "token": tx.token,
+            "value": tx.amount_usd,
+            "chain": tx.chain,
+            "type": tx.action,
+        }}
+    
+    return {"error": "No results found"}
+
 
 @app.get("/admin/db-status")
 def db_status(db: Session = Depends(get_db)):
