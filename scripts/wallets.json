@@ -6,9 +6,19 @@
   { "address": "0x50b309f78e774a756a2230e1769729094cac9f20", "label": "Trend Research Accumulator", "chain": "ethereum" },
   { "address": "0x4ff9b58ed112bf3df108d1d62bd95e7352ef38d3", "label": "Oil FOMO Whale", "chain": "ethereum" },
   { "address": "0x020cA66C30beC2c4Fe3861a94E4DB4A498A35872", "label": "Machi Big Brother", "chain": "ethereum" },
-  { "address": "0xd85351181b3F264ee0FDFa94518464d7c3DefaDa", "label": "James Fickel (ETH Macro Whale)", "chain": "ethereum" },
+  { "address": "0xd85351181b3F264ee0FDFa94518464d7c3DefaDa", "label": "James Fickel", "chain": "ethereum" },
   { "address": "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296", "label": "Justin Sun Execution", "chain": "ethereum" },
   { "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "label": "Vitalik Buterin", "chain": "ethereum" },
+  { "address": "0x8A01f136c35823A158f95b04943a5FC3d8f794d9", "label": "High Volume Stablecoin Whale", "chain": "ethereum" },
+  { "address": "0xb5E4d21240e9356caFc3a1261d10383f62DFc24e", "label": "a16z Linked Wallet", "chain": "ethereum" },
+  { "address": "0xaa922d35e68a4b6b1631b61a8fb0471c4a9767ab", "label": "High-Conviction Altcoin Whale", "chain": "ethereum" },
+  { "address": "0xfda808A1410F6Cc70Eee4ae423EC43564db39f26", "label": "Elite ETH Swing Trader", "chain": "ethereum" },
+  { "address": "0x96eB9e48251c4143C14edE6Be296Bc0ea8f75f29", "label": "Precision Momentum Swing Trader", "chain": "ethereum" },
+  { "address": "0x35270069b7a3C6d8c2CAF73965F07A8a8b051e16", "label": "Aggressive HYPE Accumulator", "chain": "ethereum" },
+  { "address": "0xfa9389e80Cd9dd9b0B429287Fd4D1d08185FEB58", "label": "Capitulating DeFi Whale", "chain": "ethereum" },
+  { "address": "0x3ed4033676d0bdb3938728ca4ac673d00e74bd06", "label": "High-Leverage Momentum Chaser", "chain": "ethereum" },
+  { "address": "0x632B0a6bb6B6184B97F61a6C773077cAb99d1838", "label": "Calculated Profit Taker", "chain": "ethereum" },
+  { "address": "0x519c721de735f7c9e6146d167852e60d60496a47", "label": "Reversing Contrarian Trader", "chain": "ethereum" },
   { "address": "0x5D2F4460Ac3514AdA79f5D9838916E508Ab39Bb7", "label": "Perp Sniper", "chain": "arbitrum" },
   { "address": "0x645e0dbdb5fc2594b8913d7d7c627afe250ab550", "label": "GMX Perp Whale", "chain": "arbitrum" },
   { "address": "0xca686974913389d42f3c5f61010503daccdb487a", "label": "LP In-Range Whale", "chain": "base" },
@@ -17,5 +27,6 @@
   { "address": "C7QezsHpHf8q1p6DozyMoxaxXrtp7dYDNZDcPhSHhXin", "label": "Solana Ecosystem Whale", "chain": "solana" },
   { "address": "3XcHbc5Z7GfM3nXkP7NE8GT7ZawVsekxEfmPCofD1kcc", "label": "Solana Meme Super-Whale", "chain": "solana" },
   { "address": "vHRSMB5mSEYJvwiW55fHquPsH67hhGYe4iGPcJchtor", "label": "Solana Swing Whale", "chain": "solana" },
-  { "address": "BuV9QKhkfu1pstvwzvWkLejfPTZiqiksWKd6yD33qCaj", "label": "Solana Alpha Accumulator", "chain": "solana" }
+  { "address": "BuV9QKhkfu1pstvwzvWkLejfPTZiqiksWKd6yD33qCaj", "label": "Solana Alpha Accumulator", "chain": "solana" },
+  { "address": "6TkTCyQTqvTqAHLzghbFByNZFp8dxXnQ2trjE1QoHmUi", "label": "KOL Influencer Wallet", "chain": "solana" }
 ]

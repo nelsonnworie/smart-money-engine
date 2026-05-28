@@ -33,7 +33,7 @@ CHAIN_EXPLORER = {
 
 DASHBOARD_URL = os.getenv(
     "DASHBOARD_URL",
-    "https://v0-project-seven-amber-60.vercel.app"
+    "https://smartmoneyengine.vercel.app/"
 )
 
 
