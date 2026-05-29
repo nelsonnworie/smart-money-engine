@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { signalFeedData } from '../data/mockData'
 
-const API_BASE = 'https://smart-money-engine-production.up.railway.app'
+import { API_BASE } from '../config'
 
 const typeColors = {
   'Whale Accumulation': { bg: 'rgba(0,212,170,0.15)', text: '#00d4aa', label: 'Accumulation' },

@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import KPICards from './components/KPICards'
 import SearchBar from './components/SearchBar'
 import Footer from './components/Footer'
+import SettingsModal from "./components/SettingsModal";
 import SignalFeed from './pages/SignalFeed'
 import Clusters from './pages/Clusters'
 import WalletExplorer from './pages/WalletExplorer'
@@ -15,6 +16,7 @@ function AppContent() {
   const [activeNav, setActiveNav] = useState('signals')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [timeLeft, setTimeLeft] = useState(30)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -101,6 +103,14 @@ function AppContent() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 min-w-fit">
+          <button
+  onClick={() => setSettingsOpen(true)}
+  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+    isDark ? 'text-dark-300 hover:bg-dark-700' : 'text-light-600 hover:bg-light-100'
+  }`}
+>
+  ⚙️ Settings
+</button>
           <div className="hidden md:flex items-center gap-2 text-xs">
             <div className={`w-1.5 h-1.5 rounded-full ${
               isRefreshing
@@ -187,6 +197,8 @@ function AppContent() {
           </div>
 
           <Footer />
+          {/* Settings Modal */}
+<SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
         </div>
 

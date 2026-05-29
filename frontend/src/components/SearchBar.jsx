@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '../context/ThemeContext'
 
-const API_BASE = 'https://smart-money-engine-production.up.railway.app'
+import { API_BASE } from '../config'
 
 export default function SearchBar({ onNavigateToExplorer }) {
   const { isDark } = useTheme()
@@ -50,7 +50,7 @@ export default function SearchBar({ onNavigateToExplorer }) {
     setSearching(true)
     setShowDropdown(true)
     try {
-      const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(val.trim())}`)
+      const res = await fetch(`${API_BASE}/api/explore?q=${encodeURIComponent(val.trim())}`)
       if (!res.ok) throw new Error('Search failed')
       const data = await res.json()
       setResults(data)
@@ -233,7 +233,7 @@ export default function SearchBar({ onNavigateToExplorer }) {
           )}
 
           {/* No results */}
-          {!searching && !error && results && !results?.signals?.length && (
+          {!searching && !error && results && !results?.signals?.length && !results?.transactions?.length && !results?.balances?.length && (
             <div className={`p-4 text-center text-sm ${isDark ? 'text-dark-400' : 'text-light-500'}`}>
               No results found for "{query}"
             </div>

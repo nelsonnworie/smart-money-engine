@@ -94,7 +94,7 @@ export default function Sidebar({ activeNav, setActiveNav, collapsed, setCollaps
           {sectionTitle('Chains')}
           <div className="space-y-1">
             {chainData.map(chain => {
-              const chainNavId = chain.name.toLowerCase().slice(0, chain.name === 'BNB Chain' ? 4 : 3)
+             const chainNavId = { 'Ethereum': 'eth', 'Solana': 'sol', 'Arbitrum': 'arb', 'Base': 'base', 'BNB Chain': 'bnb', 'Polygon': 'matic' }[chain.name] || chain.name.toLowerCase()
               const isActive = activeNav === chainNavId
               return (
                 <button

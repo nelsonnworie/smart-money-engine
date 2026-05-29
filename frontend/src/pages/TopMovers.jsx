@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 
-const API_BASE = 'https://smart-money-engine-production.up.railway.app'
+import { API_BASE } from '../config'
 
 export default function TopMovers({ activeNav }) {
   const { isDark } = useTheme()

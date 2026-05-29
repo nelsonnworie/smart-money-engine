@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 
-const API_BASE = 'https://smart-money-engine-production.up.railway.app'
+import { API_BASE } from '../config'
 
 export default function Clusters() {
   const { isDark } = useTheme()
@@ -12,7 +12,7 @@ export default function Clusters() {
     let cancelled = false
     async function fetchData() {
       try {
-        const res = await fetch(`${API_BASE}/clusters`)
+        const res = await fetch(`${API_BASE}/signals`)
         if (!res.ok) throw new Error('API error')
         const data = await res.json()
         if (!cancelled) setClusters(data)

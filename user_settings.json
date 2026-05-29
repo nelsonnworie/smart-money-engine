@@ -1,0 +1,18 @@
+{
+  "alert_threshold": 70,
+  "min_volume": 50000,
+  "chains": {
+    "ethereum": true,
+    "solana": false,
+    "arbitrum": false,
+    "base": false,
+    "bnb": false
+  },
+  "signal_types": {
+    "BUY": true,
+    "SELL": true,
+    "CLUSTER": true
+  },
+  "notification_sounds": true,
+  "telegram_enabled": false
+}

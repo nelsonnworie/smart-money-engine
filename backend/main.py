@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 import asyncio
 import os
 
+import requests
+import json
+from pydantic import BaseModel
 from backend.database import SessionLocal, engine
 from backend.models import Signal, Wallet, Transaction, ProcessedTransaction, Base
 from scripts.collector import run_collection
@@ -369,6 +372,212 @@ def search_wallet(q: str = "", db: Session = Depends(get_db)):
         "_debug_error": error_detail,
     }
 
+
+@app.get("/api/explore")
+def explore_wallet(q: str = "", db: Session = Depends(get_db)):
+    """
+    Universal wallet explorer — searches ANY address on any chain.
+    Checks internal DB first, then falls back to Etherscan/Solscan/Covalent.
+    """
+    if not q:
+        return {"error": "No address provided"}
+    
+    q_clean = q.strip()
+    result = {
+        "wallet": None,
+        "signals": [],
+        "transactions": [],
+        "balances": [],
+        "source": "internal"
+    }
+    
+    # --- Step 1: Check internal DB first ---
+    wallet = None
+    signals = []
+    txns = []
+    try:
+        wallet = db.query(Wallet).filter(Wallet.address.ilike(f"%{q_clean}%")).first()
+    except: pass
+    try:
+        signals = db.query(Signal).filter(Signal.wallets_involved.ilike(f"%{q_clean}%")).order_by(Signal.created_at.desc()).limit(50).all()
+    except: pass
+    try:
+        txns = db.query(Transaction).filter(Transaction.wallet_address.ilike(f"%{q_clean}%")).order_by(Transaction.timestamp.desc()).limit(50).all()
+    except: pass
+    
+    if wallet or signals or txns:
+        total_volume = sum(s.amount_usd or 0 for s in signals)
+        buy_count = sum(1 for s in signals if s.signal_type == 'BUY')
+        sell_count = sum(1 for s in signals if s.signal_type == 'SELL')
+        result.update({
+            "wallet": {
+                "address": q_clean,
+                "label": wallet.label if wallet else "Monitored Wallet",
+                "chain": wallet.chain if wallet else "unknown",
+                "total_signals": len(signals),
+                "total_volume": total_volume,
+                "buys": buy_count,
+                "sells": sell_count,
+            } if wallet or signals else None,
+            "signals": [
+                {"id": s.id, "token": s.token, "type": s.signal_type, "signal_type": s.signal_type, "amount_usd": s.amount_usd, "chain": s.chain, "conviction": s.conviction_score, "conviction_score": s.conviction_score, "time": str(s.created_at), "tx_hash": s.tx_hash}
+                for s in signals
+            ],
+            "transactions": [
+                {"hash": t.tx_hash, "token": t.token, "value": t.amount_usd, "chain": t.chain, "action": t.action, "time": str(t.timestamp)}
+                for t in txns
+            ],
+            "source": "internal"
+        })
+        return result
+    
+    # --- Step 2: Not in DB — try external APIs ---
+    
+    # Detect chain by address format
+    if q_clean.startswith('0x') and len(q_clean) == 42:
+        # Ethereum / EVM chain
+        etherscan_key = os.getenv("ETHERSCAN_KEY", "")
+        
+        try:
+            # Get ETH balance
+            eth_balance = 0
+            try:
+                bal_resp = requests.get(
+                    f"https://api.etherscan.io/api?module=account&action=balance&address={q_clean}&tag=latest&apikey={etherscan_key}",
+                    timeout=10
+                )
+                bal_data = bal_resp.json()
+                if bal_data.get('status') == '1':
+                    eth_balance = int(bal_data['result']) / 1e18
+            except: pass
+            
+            # Get recent transactions
+            external_txns = []
+            try:
+                tx_resp = requests.get(
+                    f"https://api.etherscan.io/api?module=account&action=txlist&address={q_clean}&startblock=0&endblock=99999999&sort=desc&apikey={etherscan_key}",
+                    timeout=10
+                )
+                tx_data = tx_resp.json()
+                if tx_data.get('status') == '1':
+                    for tx in tx_data['result'][:20]:
+                        external_txns.append({
+                            "hash": tx['hash'],
+                            "token": "ETH",
+                            "value": int(tx['value']) / 1e18,
+                            "chain": "ethereum",
+                            "action": "RECEIVE" if tx['to'].lower() == q_clean.lower() else "SEND",
+                            "time": tx['timeStamp'],
+                        })
+            except: pass
+            
+            # Get ERC-20 token balances via Covalent
+            balances = []
+            covalent_key = os.getenv("COVALENT_KEY", "")
+            if covalent_key:
+                try:
+                    cov_resp = requests.get(
+                        f"https://api.covalenthq.com/v1/1/address/{q_clean}/balances_v2/?key={covalent_key}",
+                        timeout=10
+                    )
+                    cov_data = cov_resp.json()
+                    if cov_data.get('data') and cov_data['data'].get('items'):
+                        for item in cov_data['data']['items'][:10]:
+                            if item['balance'] and int(item['balance']) > 0:
+                                decimals = int(item['contract_decimals']) if item.get('contract_decimals') else 18
+                                raw_balance = int(item['balance'])
+                                if raw_balance > 0:
+                                    human_balance = raw_balance / (10 ** decimals)
+                                    balances.append({
+                                        "token": item.get('contract_ticker_symbol', 'UNKNOWN'),
+                                        "contract": item.get('contract_address', ''),
+                                        "balance": round(human_balance, 4),
+                                        "value_usd": round(item.get('quote', 0), 2) if item.get('quote') else None,
+                                        "logo": item.get('logo_url', ''),
+                                    })
+                except: pass
+            
+            result.update({
+                "wallet": {
+                    "address": q_clean,
+                    "label": "Ethereum Wallet",
+                    "chain": "ethereum",
+                    "eth_balance": round(eth_balance, 4),
+                },
+                "transactions": external_txns,
+                "balances": balances,
+                "source": "etherscan"
+            })
+        except Exception as e:
+            result["error"] = str(e)
+    
+    elif len(q_clean) >= 32 and not q_clean.startswith('0x'):
+        # Solana address
+        solscan_key = os.getenv("SOLSCAN_KEY", "")
+        helius_key = os.getenv("HELIUS_KEY", "")
+        
+        try:
+            # Get SOL balance via Helius
+            sol_balance = 0
+            if helius_key:
+                try:
+                    hel_resp = requests.post(
+                        f"https://api.helius.xyz/v0/addresses/{q_clean}/balances?apiKey={helius_key}",
+                        timeout=10
+                    )
+                    hel_data = hel_resp.json()
+                    if hel_data and 'tokens' in hel_data:
+                        for tok in hel_data['tokens']:
+                            if tok.get('mint') == 'So11111111111111111111111111111111111111112':
+                                sol_balance = tok.get('amount', 0) / 1e9
+                except: pass
+            
+            # Get recent Solana transactions via Solscan
+            external_txns = []
+            if solscan_key:
+                try:
+                    ss_resp = requests.get(
+                        f"https://api.solscan.io/v2/account/transactions?address={q_clean}&limit=20",
+                        headers={"Accept": "application/json", "token": solscan_key},
+                        timeout=10
+                    )
+                    ss_data = ss_resp.json()
+                    if ss_data and ss_data.get('data'):
+                        for tx in ss_data['data'][:20]:
+                            external_txns.append({
+                                "hash": tx.get('txHash', ''),
+                                "token": "SOL",
+                                "value": (tx.get('lamports', 0) or 0) / 1e9,
+                                "chain": "solana",
+                                "action": tx.get('txType', 'UNKNOWN'),
+                                "time": str(tx.get('blockTime', '')),
+                            })
+                except: pass
+            
+            result.update({
+                "wallet": {
+                    "address": q_clean,
+                    "label": "Solana Wallet",
+                    "chain": "solana",
+                    "sol_balance": round(sol_balance, 4),
+                },
+                "transactions": external_txns,
+                "source": "solscan"
+            })
+        except Exception as e:
+            result["error"] = str(e)
+    
+    else:
+        # Unknown format — try Covalent anyway
+        covalent_key = os.getenv("COVALENT_KEY", "")
+        result.update({
+            "wallet": {"address": q_clean, "label": "Unknown Wallet", "chain": "unknown"},
+            "source": "external"
+        })
+    
+    return result
+
+
 @app.get("/admin/db-status")
 def db_status(db: Session = Depends(get_db)):
     signal_tokens = db.execute(text(
@@ -422,3 +631,51 @@ def dedup_status(db: Session = Depends(get_db)):
             for r in recent
         ],
     }
+
+# ---------------------------------------------------------------------------
+# Settings Routes
+# ---------------------------------------------------------------------------
+
+DEFAULT_SETTINGS = {
+    "alert_threshold": 70,
+    "min_volume": 10000,
+    "chains": {
+        "ethereum": True,
+        "solana": True,
+        "arbitrum": True,
+        "base": True,
+        "bnb": True,
+    },
+    "signal_types": {
+        "BUY": True,
+        "SELL": True,
+        "CLUSTER": True,
+    },
+    "notification_sounds": True,
+    "telegram_enabled": False,
+}
+
+SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '..', 'user_settings.json')
+
+def load_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+    except: pass
+    return DEFAULT_SETTINGS.copy()
+
+def save_settings(settings):
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+@app.get("/api/settings")
+def get_settings():
+    return load_settings()
+
+@app.post("/api/settings")
+def update_settings(body: dict):
+    current = load_settings()
+    current.update(body)
+    save_settings(current)
+    return {"status": "saved", "settings": current}

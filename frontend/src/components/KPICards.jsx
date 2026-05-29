@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 
-const API_BASE = 'https://smart-money-engine-production.up.railway.app'
+import { API_BASE } from '../config'
 
 const KpiIcon = ({ type }) => {
   const props = { className: "w-4 h-4", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }
